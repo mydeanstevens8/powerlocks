@@ -1,0 +1,17 @@
+[package]
+name = "powerlocks"
+version = "0.1.0"
+edition = "2024"
+authors = ["Dean Stevens"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+
+[features]
+default = []
+std = []
+rwlock = ["mutex"]
+mutex = []
+
+[dev-dependencies]
+fastrand = "2.3.0"

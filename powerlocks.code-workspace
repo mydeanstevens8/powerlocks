@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"editor.rulers": [80],
+		"[rust]": {
+			"editor.rulers": [100]
+		},
+		"[toml]": {
+			"editor.rulers": [100]
+		},
+		"[markdown]": {
+			"editor.unicodeHighlight.ambiguousCharacters": true,
+			"editor.unicodeHighlight.invisibleCharacters": true,
+			"diffEditor.ignoreTrimWhitespace": false,
+			"editor.wordWrap": "off",
+			"editor.rulers": [80]
+		},
+		"prettier.proseWrap": "always",
+		"lldb.displayFormat": "auto",
+		"lldb.dereferencePointers": true,
+		"lldb.consoleMode": "commands",
+		"lldb.showDisassembly": "auto",
+		"rust-analyzer.cargo.features": "all",
+	}
+}
