@@ -1,142 +1,181 @@
+pub mod strategies;
+mod try_strategy;
+pub use try_strategy::*;
+
 use std::{
-    any::Any,
-    error::Error,
-    fmt::{Debug, Display},
-    panic::AssertUnwindSafe,
-    panic::{catch_unwind, resume_unwind, set_hook, take_hook},
-    thread::{self, Builder, Scope},
+    fmt::Debug,
+    hint::black_box,
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind, set_hook, take_hook},
+    thread,
 };
 
-use powerlocks::rwlock::{Method, RwLockApi};
+use powerlocks::{primitives::TryLockError, rwlock::RwLockApi};
 
-macro_rules! error_type {
-        ($vis:vis $name:ident { $($option:ident($message:literal)),* $(,)? }) => {
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-            $vis enum $name {
-                $($option,)*
-            }
+use crate::utils::race_checker::{CheckerHandles, RaceChecker};
 
-            impl Display for $name {
-                #[allow(unused_variables)] // If we're generating an empty enum
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    match *self {
-                        $(Self::$option => write!(f, $message),)*
-                    }
-                }
-            }
+pub fn run_single_thread<A: RwLockApi<T>, T: Debug + Default + PartialEq>() {
+    let locked_unit = A::new(T::default());
+    let default_t = T::default();
 
-            impl Error for $name {}
-        };
-    }
-
-error_type!(pub(super) StrategyLogicError {
-    ConcurrentReadAndWrite(
-        "The provided `Strategy` wanted to `State::Ok` a `Method::Write` and a \
-        `Method::Read` together."
-    ),
-    ConcurrentMultipleWrites(
-        "The provided `Strategy` wanted to `State::Ok` two or more `Method::Write`s."
-    ),
-    BlockedAfterOkState(
-        "The provided `Strategy` wanted to re-block a `State::Ok`ed thread."
-    ),
-    BrokenLock(
-        "There is a logic error in the provided `Strategy`. Can't continue."
-    ),
-});
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TryStrategyAttempt<E>
-where
-    E: Any + Debug + PartialEq + Send + Sync,
-{
-    Try(Method, Result<(), E>),
-    UnlockAll,
+    assert_eq!(*locked_unit.read().unwrap(), default_t);
+    assert_eq!(*locked_unit.write().unwrap(), default_t);
+    assert_eq!(*locked_unit.read().unwrap(), default_t);
+    assert_eq!(*locked_unit.write().unwrap(), default_t);
 }
 
-pub fn try_strategy<E, T>(lock: &(impl RwLockApi<T> + Sync), attempts: &[TryStrategyAttempt<E>])
-where
-    E: Any + Debug + PartialEq + Send + Sync,
-    T: ?Sized + Send + Sync,
-{
-    fn try_strategy_inner<'a, E, T, L>(
-        lock: &'a L,
-        scope: &'a Scope<'a, '_>,
-        iteration: usize,
-        attempts: &'a [TryStrategyAttempt<E>],
-    ) where
-        E: Any + Debug + PartialEq + Send + Sync,
-        T: ?Sized + Send + Sync,
-        L: RwLockApi<T> + Sync,
-    {
-        match attempts.split_first() {
-            None => (),
-            Some((next, rest)) => {
-                let TryStrategyAttempt::Try(method, expectation) = next else {
-                    panic!("Expected a `Try` variant, got `UnlockAll`.")
-                };
-
-                let panic_message = expectation.as_ref().err();
-                let should_panic = panic_message.is_some();
-
-                let thread_name = format!(
-                    "`try_strategy` {} #{} - {}",
-                    match method {
-                        Method::Read => "reader",
-                        Method::Write => "writer",
-                    },
-                    iteration,
-                    if should_panic { "should panic" } else { "" }
-                );
-
-                let result = Builder::new()
-                    .name(thread_name)
-                    .spawn_scoped(scope, move || {
-                        let execution = || match *method {
-                            Method::Read => {
-                                let guard = catch_unwind(AssertUnwindSafe(|| lock.read().unwrap()));
-                                // Always try to spawn threads, even when unwinding.
-                                try_strategy_inner(lock, scope, iteration + 1, rest);
-                                drop(guard.map_err(resume_unwind).unwrap());
-                            }
-                            Method::Write => {
-                                let guard =
-                                    catch_unwind(AssertUnwindSafe(|| lock.write().unwrap()));
-                                try_strategy_inner(lock, scope, iteration + 1, rest);
-                                drop(guard.map_err(resume_unwind).unwrap());
-                            }
-                        };
-
-                        if should_panic {
-                            suppress_panic_message(execution);
-                        } else {
-                            execution();
-                        }
-                    })
-                    .unwrap()
-                    .join();
-
-                if should_panic {
-                    result
-                        .expect_err("This attempt must panic")
-                        .downcast::<E>()
-                        .map(|err| assert_eq!(&*err, panic_message.unwrap()))
-                        .expect("Error must be of type `E`")
-                } else {
-                    result.expect("This attempt must not panic")
-                }
-            }
-        }
-    }
+pub fn race_reads<A: RwLockApi<RaceChecker> + Sync>(lock: &A) {
+    let handles = CheckerHandles::new(4);
 
     thread::scope(|scope| {
-        attempts
-            .split(|attempt| match attempt {
-                TryStrategyAttempt::UnlockAll => true,
-                _ => false,
-            })
-            .for_each(|attempt_set| try_strategy_inner(lock, scope, 0, attempt_set));
+        handles.guard(|| {
+            scope.spawn(|| lock.read().unwrap().read(&handles[0]));
+            assert!(handles[0].will_be_locked());
+            handles[0].release();
+
+            scope.spawn(|| lock.read().unwrap().read(&handles[1]));
+            assert!(handles[1].will_be_locked());
+            scope.spawn(|| lock.read().unwrap().read(&handles[2]));
+            assert!(handles[1].is_locked());
+            assert!(handles[2].will_be_locked());
+            handles[1].release();
+            scope.spawn(|| lock.read().unwrap().read(&handles[3]));
+            assert!(handles[3].will_be_locked());
+            handles[2].release();
+            handles[3].release();
+        });
     });
+}
+
+pub fn race_writes<A: RwLockApi<RaceChecker> + Sync>(lock: &A) {
+    let handles = CheckerHandles::new(4);
+
+    thread::scope(|scope| {
+        handles.guard(|| {
+            scope.spawn(|| lock.write().unwrap().write(&handles[0]));
+            assert!(handles[0].will_be_locked());
+            handles[0].release();
+
+            scope.spawn(|| lock.write().unwrap().write(&handles[1]));
+            assert!(handles[1].will_be_locked());
+            scope.spawn(|| lock.write().unwrap().write(&handles[2]));
+            assert!(handles[2].will_not_be_locked());
+            handles[1].release();
+            assert!(handles[2].will_be_locked());
+            scope.spawn(|| lock.write().unwrap().write(&handles[3]));
+            assert!(handles[3].will_not_be_locked());
+            handles[2].release();
+            assert!(handles[3].will_be_locked());
+            handles[3].release();
+        });
+    });
+}
+
+pub fn race_fair_writes_and_reads<A: RwLockApi<RaceChecker> + Sync>(lock: &A) {
+    let handles = CheckerHandles::new(6);
+
+    thread::scope(|scope| {
+        handles.guard(|| {
+            scope.spawn(|| lock.read().unwrap().read(&handles[0]));
+            assert!(handles[0].will_be_locked());
+            scope.spawn(|| lock.write().unwrap().write(&handles[1]));
+            assert!(handles[1].will_not_be_locked());
+            handles[0].release();
+            assert!(handles[1].will_be_locked());
+            scope.spawn(|| lock.read().unwrap().read(&handles[2]));
+            assert!(handles[2].will_not_be_locked());
+            scope.spawn(|| lock.read().unwrap().read(&handles[3]));
+            assert!(handles[3].will_not_be_locked());
+            handles[1].release();
+            assert!(handles[2].will_be_locked());
+            assert!(handles[3].will_be_locked());
+            scope.spawn(|| lock.write().unwrap().write(&handles[4]));
+            assert!(handles[4].will_not_be_locked());
+            scope.spawn(|| lock.write().unwrap().write(&handles[5]));
+            assert!(handles[5].will_not_be_locked());
+            handles[2].release();
+            assert!(handles[4].will_not_be_locked());
+            assert!(handles[5].will_not_be_locked());
+            handles[3].release();
+            assert!(handles[4].will_be_locked());
+            assert!(handles[5].will_not_be_locked());
+            handles[4].release();
+            assert!(handles[5].will_be_locked());
+            handles[5].release();
+        });
+    });
+}
+
+pub fn no_poison_on_read<A: RwLockApi<()> + Sync>(lock: &A) {
+    thread::scope(|scope| {
+        suppress_panic_message(|| {
+            thread::Builder::new()
+                .name("Panicked reader".to_string())
+                .spawn_scoped(scope, || {
+                    let guard = lock.read().unwrap();
+                    black_box(|| -> () { panic!() })();
+                    drop(guard);
+                })
+                .unwrap()
+                .join()
+        })
+        .expect_err("Spawned thread must panic");
+
+        assert!(
+            !lock.is_poisoned(),
+            "Panicking during a `read` must not poison the `lock`."
+        );
+
+        assert_eq!(*lock.read().unwrap(), ());
+        assert_eq!(*lock.write().unwrap(), ());
+
+        assert_eq!(*lock.try_read().unwrap(), ());
+        assert_eq!(*lock.try_write().unwrap(), ());
+    });
+}
+
+pub fn poison_on_write<A: RwLockApi<()> + Sync>(lock: &A) {
+    thread::scope(|scope| {
+        suppress_panic_message(|| {
+            thread::Builder::new()
+                .name("Panicked writer".to_string())
+                .spawn_scoped(scope, || {
+                    let guard = lock.write().unwrap();
+                    black_box(|| -> () { panic!() })();
+                    drop(guard);
+                })
+                .unwrap()
+                .join()
+        })
+        .expect_err("Spawned thread must panic");
+
+        assert!(
+            lock.is_poisoned(),
+            "Panicking during a `write` must poison the `lock`."
+        );
+
+        assert_eq!(*lock.read().err().unwrap().into_inner(), ());
+        assert_eq!(*lock.write().err().unwrap().into_inner(), ());
+        if let Err(TryLockError::Poisoned(poison)) = lock.try_read() {
+            assert_eq!(*poison.into_inner(), ());
+        } else {
+            panic!("`lock` must be poisoned");
+        }
+
+        if let Err(TryLockError::Poisoned(poison)) = lock.try_write() {
+            assert_eq!(*poison.into_inner(), ());
+        } else {
+            panic!("`lock` must be poisoned");
+        }
+
+        lock.clear_poison();
+        assert!(!lock.is_poisoned());
+
+        assert_eq!(*lock.read().unwrap(), ());
+        assert_eq!(*lock.write().unwrap(), ());
+
+        assert_eq!(*lock.try_read().unwrap(), ());
+        assert_eq!(*lock.try_write().unwrap(), ());
+    })
 }
 
 pub fn suppress_panic_message<T>(f: impl FnOnce() -> T) -> T {
@@ -144,4 +183,61 @@ pub fn suppress_panic_message<T>(f: impl FnOnce() -> T) -> T {
     let result = catch_unwind(AssertUnwindSafe(f));
     let _ = take_hook();
     result.unwrap_or_else(|panic| resume_unwind(panic))
+}
+
+pub fn load_test_with<A: RwLockApi<usize> + Sync>(
+    mut lock: A,
+    threads: usize,
+    writes: usize,
+    reads: usize,
+) {
+    *lock.get_mut().unwrap() = 0_usize;
+    thread::scope(|scope| {
+        for t in 0..threads {
+            let lock_ref = &lock;
+            thread::Builder::new()
+                .name(format!("load thread number {}", t + 1))
+                .spawn_scoped(scope, move || {
+                    #[derive(Clone, Copy)]
+                    enum TestActions {
+                        Read,
+                        Write,
+                    }
+
+                    let permute = || {
+                        let mut rng = fastrand::Rng::with_seed(u64::try_from(t).unwrap());
+
+                        let mut actions = vec![];
+                        actions.append(&mut vec![TestActions::Write; writes / 2]);
+                        actions.append(&mut vec![TestActions::Read; reads / 2]);
+
+                        rng.shuffle(&mut *actions);
+
+                        for action in actions {
+                            match action {
+                                TestActions::Read => {
+                                    let guard = lock_ref.read().unwrap();
+                                    black_box(*guard);
+                                    drop(guard);
+                                }
+                                TestActions::Write => {
+                                    let mut guard = lock_ref.write().unwrap();
+                                    *guard ^= rng.usize(0..usize::MAX);
+                                    drop(guard);
+                                }
+                            }
+                        }
+                    };
+
+                    permute();
+                    permute();
+                })
+                .unwrap();
+        }
+    });
+
+    assert_eq!(*lock.read().unwrap(), 0);
+    assert_eq!(*lock.write().unwrap(), 0);
+    assert_eq!(*lock.get_mut().unwrap(), 0);
+    assert_eq!(lock.into_inner().unwrap(), 0);
 }

@@ -11,7 +11,7 @@ use std::{
 };
 
 pub const SUGGESTED_LOCK_WAIT: Duration = Duration::from_secs(10);
-pub const SUGGESTED_NO_LOCK_WAIT: Duration = Duration::from_millis(50);
+pub const SUGGESTED_NO_LOCK_WAIT: Duration = Duration::from_millis(30);
 
 #[derive(Debug)]
 pub struct CheckerHandle {
