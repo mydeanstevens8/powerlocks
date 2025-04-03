@@ -1,9 +1,3 @@
-[← Go back to `LICENSE.md`](LICENSE.md)
-
-Online version available at <http://www.apache.org/licenses/LICENSE-2.0>.
-
-# License
-
 Apache License  
 Version 2.0, January 2004  
 <https://www.apache.org/licenses/>

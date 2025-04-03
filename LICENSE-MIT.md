@@ -1,9 +1,3 @@
-[← Go back to `LICENSE.md`](LICENSE.md)
-
-Online version available at <http://opensource.org/licenses/MIT>.
-
-# License
-
 Copyright (C) 2025 Dean Stevens & other contributors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
