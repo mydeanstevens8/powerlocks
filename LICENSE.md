@@ -1,3 +1,5 @@
+SPDX-License-Identifier: MIT OR Apache-2.0
+
 # License
 
 Copyright (C) 2025 Dean Stevens & other contributors.
@@ -16,7 +18,3 @@ is licensed to you under the terms and conditions of either the
 
 - <http://www.apache.org/licenses/LICENSE-2.0>
 - <http://opensource.org/licenses/MIT>
-
----
-
-SPDX-License-Identifier: MIT OR Apache-2.0
