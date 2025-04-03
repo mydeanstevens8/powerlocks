@@ -198,8 +198,12 @@ impl<'a, T: 'a + ?Sized, H: Handle> BaseRwLockReadGuard<'a, T, H> {
     }
 }
 
-// SAFETY:  References to `BaseRwLockReadGuard` can safely be shared because it won't corrupt the
-// thread count. `NonNull<T>` is also guaranteed to be live by the caller to `new`.
+// SAFETY: Unlike `RwLockReadGuard`, we are `Send` for similar reasons as why `BaseMutexGuard` is
+// `Send` - we are `Handle`-based and we don't need to release the lock on the same thread, unlike
+// what `pthread_mutex_unlock` requires. The `Handle` structure we have will never `park` after the
+// lock is acquired, and `release` only works with the handle ID, which prevents any threading
+// unsafety or conflicts that arise from `Send`ing this guard.
+unsafe impl<'a, T: 'a + ?Sized + Send, H: Handle> Send for BaseRwLockReadGuard<'a, T, H> {}
 unsafe impl<'a, T: 'a + ?Sized + Sync, H: Handle> Sync for BaseRwLockReadGuard<'a, T, H> {}
 
 impl<'a, T: 'a + ?Sized, H: Handle> UnwindSafe for BaseRwLockReadGuard<'a, T, H> {}
@@ -245,8 +249,8 @@ impl<'a, T: 'a + ?Sized, H: Handle> BaseRwLockWriteGuard<'a, T, H> {
     }
 }
 
-// SAFETY: References to `BaseRwLockWriteGuard` can safely be shared because it won't corrupt the
-// thread count. `NonNull<T>` is also guaranteed to be live by the caller to `new`.
+// SAFETY: `BaseRwLockWriteGuard` is send for the same reason as `BaseRwLockReadGuard`.
+unsafe impl<'a, T: 'a + ?Sized + Send, H: Handle> Send for BaseRwLockWriteGuard<'a, T, H> {}
 unsafe impl<'a, T: 'a + ?Sized + Sync, H: Handle> Sync for BaseRwLockWriteGuard<'a, T, H> {}
 
 impl<'a, T: 'a + ?Sized, H: Handle> UnwindSafe for BaseRwLockWriteGuard<'a, T, H> {}

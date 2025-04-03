@@ -53,16 +53,15 @@ fn assert_trait() {
     assert_is_trait!(StdRwLock<*mut ()>, !Send, !Sync);
     assert_is_trait!(StdRwLock<*mut ()>, UnwindSafe, RefUnwindSafe, Unpin);
 
-    assert_is_trait!(StdRwLockReadGuard<'_, ()>, !Send);
-    assert_is_trait!(StdRwLockReadGuard<'_, ()>, Sync);
+    assert_is_trait!(StdRwLockReadGuard<'_, ()>, Send, Sync);
     assert_is_trait!(StdRwLockReadGuard<'_, ()>, UnwindSafe, RefUnwindSafe, Unpin);
 
-    assert_is_trait!(StdRwLockReadGuard<'_, i32>, !Send);
-    assert_is_trait!(StdRwLockReadGuard<'_, i32>, Sync);
+    assert_is_trait!(StdRwLockReadGuard<'_, i32>, Send, Sync);
     assert_is_trait!(StdRwLockReadGuard<'_, i32>, UnwindSafe, RefUnwindSafe);
     assert_is_trait!(StdRwLockReadGuard<'_, i32>, Unpin);
 
-    assert_is_trait!(StdRwLockReadGuard<'_, UnsafeCell<i32>>, !Send, !Sync);
+    assert_is_trait!(StdRwLockReadGuard<'_, UnsafeCell<i32>>, Send);
+    assert_is_trait!(StdRwLockReadGuard<'_, UnsafeCell<i32>>, !Sync);
     assert_is_trait!(StdRwLockReadGuard<'_, *const ()>, !Send, !Sync);
     assert_is_trait!(
         StdRwLockReadGuard<'_, std::sync::RwLockReadGuard<'_, i32>>,
@@ -73,12 +72,12 @@ fn assert_trait() {
         Sync
     );
 
-    assert_is_trait!(StdRwLockWriteGuard<'_, i32>, !Send);
-    assert_is_trait!(StdRwLockWriteGuard<'_, i32>, Sync);
+    assert_is_trait!(StdRwLockWriteGuard<'_, i32>, Send, Sync);
     assert_is_trait!(StdRwLockWriteGuard<'_, i32>, UnwindSafe, RefUnwindSafe);
     assert_is_trait!(StdRwLockWriteGuard<'_, i32>, Unpin);
 
-    assert_is_trait!(StdRwLockWriteGuard<'_, UnsafeCell<i32>>, !Send, !Sync);
+    assert_is_trait!(StdRwLockWriteGuard<'_, UnsafeCell<i32>>, Send);
+    assert_is_trait!(StdRwLockWriteGuard<'_, UnsafeCell<i32>>, !Sync);
     assert_is_trait!(StdRwLockWriteGuard<'_, *const ()>, !Send, !Sync);
     assert_is_trait!(
         StdRwLockWriteGuard<'_, std::sync::RwLockReadGuard<'_, i32>>,
