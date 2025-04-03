@@ -56,6 +56,10 @@ fn lock() {
     mutex_utils::lock_writing::<StdMutex<_>, _>(&0_u16, 0x47a2);
     mutex_utils::lock_writing::<StdMutex<_>, _>(&0_u32, 0xac7e4d30);
     mutex_utils::lock_writing::<StdMutex<_>, _>(&0_u64, 0xac7e4d30_951f268b);
+
+    let array_i32 = [1, 2, 3, 4, 5];
+    let unsized_lock: &mut StdMutex<[i32]> = &mut StdMutex::new(array_i32);
+    mutex_utils::lock_unsized(unsized_lock, &array_i32);
 }
 
 #[test]

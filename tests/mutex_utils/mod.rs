@@ -73,6 +73,29 @@ pub fn lock_writing<A: MutexApi<T> + Sync, T: Testable + BitXorAssign + Send + S
     assert_eq!(lock.into_inner().unwrap(), *value);
 }
 
+pub fn lock_unsized<A: MutexApi<T> + ?Sized + Sync, T: ?Sized + Sync + PartialEq + Debug>(
+    lock: &mut A,
+    expected: &T,
+) {
+    assert!(!lock.is_poisoned());
+
+    thread::scope(|scope| {
+        scope.spawn(|| {
+            let guard = lock.lock().unwrap();
+            assert_eq!(&*guard, expected);
+            drop(guard);
+        });
+
+        scope.spawn(|| {
+            let guard = lock.lock().unwrap();
+            assert_eq!(&*guard, expected);
+            drop(guard);
+        });
+    });
+
+    assert_eq!(lock.get_mut().unwrap(), expected);
+}
+
 pub fn race_lock<A: MutexApi<RaceChecker> + Sync>() {
     let lock = A::new(RaceChecker::new());
     let handles = CheckerHandles::new(4);
