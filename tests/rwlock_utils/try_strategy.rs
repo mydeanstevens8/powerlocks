@@ -56,7 +56,7 @@ where
 pub fn try_strategy<E, T>(lock: &(impl RwLockApi<T> + Sync), attempts: &[TryStrategyAttempt<E>])
 where
     E: Any + Debug + PartialEq + Send + Sync,
-    T: ?Sized + Send + Sync,
+    T: ?Sized + Sync,
 {
     fn try_strategy_inner<'a, E, T, L>(
         lock: &'a L,
@@ -65,7 +65,7 @@ where
         attempts: &'a [TryStrategyAttempt<E>],
     ) where
         E: Any + Debug + PartialEq + Send + Sync,
-        T: ?Sized + Send + Sync,
+        T: ?Sized + Sync,
         L: RwLockApi<T> + Sync,
     {
         match attempts.split_first() {

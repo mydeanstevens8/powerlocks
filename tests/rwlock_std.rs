@@ -5,14 +5,9 @@ use std::{
     panic::{RefUnwindSafe, UnwindSafe},
 };
 
-use powerlocks::rwlock::{Method, StdRwLock, StdRwLockReadGuard, StdRwLockWriteGuard, strategies};
+use powerlocks::rwlock::{StdRwLock, StdRwLockReadGuard, StdRwLockWriteGuard, strategies};
 
 mod rwlock_utils;
-use rwlock_utils::{
-    StrategyLogicError,
-    TryStrategyAttempt::{Try, UnlockAll},
-    load_test_with, strategies as test_strategies, try_strategy,
-};
 
 mod utils;
 use utils::{assert_is_trait, race_checker::RaceChecker};
@@ -147,258 +142,56 @@ fn poison_on_write() {
 
 #[test]
 fn broken_strategy_one_read() {
-    try_strategy::<String, _>(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Read, Ok(())),
-            UnlockAll,
-            Try(Method::Read, Ok(())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_one_read::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_one_read::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_one_write() {
-    try_strategy::<String, _>(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Write, Ok(())),
-            UnlockAll,
-            Try(Method::Write, Ok(())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_one_write::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_one_write::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_sequential_read_then_write() {
-    try_strategy::<String, _>(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Read, Ok(())),
-            UnlockAll,
-            Try(Method::Write, Ok(())),
-            UnlockAll,
-            Try(Method::Read, Ok(())),
-            Try(Method::Read, Ok(())),
-            UnlockAll,
-            Try(Method::Write, Ok(())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_sequential_read_then_write::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_sequential_read_then_write::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_multiple_reads() {
-    try_strategy::<String, _>(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Read, Ok(())),
-            UnlockAll,
-            Try(Method::Read, Ok(())),
-            Try(Method::Read, Ok(())),
-            UnlockAll,
-            Try(Method::Read, Ok(())),
-            Try(Method::Read, Ok(())),
-            Try(Method::Read, Ok(())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_multiple_reads::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_multiple_reads::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_read_then_write() {
-    // Although the strategy here is to test `StdRwLock` as a black-box, this private
-    // white-box type is only used to fetch the actual error message we expect. It does couple
-    // the test to white-box details, but saves verbosity in writing out the error message, which
-    // is not important to test.
-    let expected_message = StrategyLogicError::ConcurrentReadAndWrite.to_string();
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Read, Ok(())),
-            Try(Method::Write, Err(expected_message.clone())),
-            UnlockAll,
-        ],
-    );
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Read, Ok(())),
-            Try(Method::Read, Ok(())),
-            Try(Method::Write, Err(expected_message.clone())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_read_then_write::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_read_then_write::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_write_then_read() {
-    let expected_message = StrategyLogicError::ConcurrentReadAndWrite.to_string();
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Write, Ok(())),
-            Try(Method::Read, Err(expected_message.clone())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_write_then_read::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_write_then_read::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_two_writes() {
-    let expected_message = StrategyLogicError::ConcurrentMultipleWrites.to_string();
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Write, Ok(())),
-            Try(Method::Write, Err(expected_message.clone())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_two_writes::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_two_writes::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_ok_then_blocked() {
-    let expected_message = StrategyLogicError::BlockedAfterOkState.to_string();
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_block_on_second)),
-        &[
-            Try(Method::Read, Ok(())),
-            Try(Method::Read, Err(expected_message.clone())),
-            UnlockAll,
-        ],
-    );
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_block_on_second)),
-        &[
-            Try(Method::Read, Ok(())),
-            Try(Method::Write, Err(expected_message.clone())),
-            UnlockAll,
-        ],
-    );
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_block_on_second)),
-        &[
-            Try(Method::Write, Ok(())),
-            Try(Method::Read, Err(expected_message.clone())),
-            UnlockAll,
-        ],
-    );
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_block_on_second)),
-        &[
-            Try(Method::Write, Ok(())),
-            Try(Method::Write, Err(expected_message.clone())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_ok_then_blocked::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_ok_then_blocked::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_try_after_broken() {
-    let broken_message = StrategyLogicError::BrokenLock.to_string();
-
-    // Try more after breakage
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Read, Ok(())),
-            Try(
-                Method::Write,
-                Err(StrategyLogicError::ConcurrentReadAndWrite.to_string()),
-            ),
-            Try(Method::Read, Err(broken_message.clone())),
-            UnlockAll,
-            Try(Method::Read, Err(broken_message.clone())),
-            Try(Method::Read, Err(broken_message.clone())),
-            UnlockAll,
-        ],
-    );
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Read, Ok(())),
-            Try(Method::Read, Ok(())),
-            Try(
-                Method::Write,
-                Err(StrategyLogicError::ConcurrentReadAndWrite.to_string()),
-            ),
-            Try(Method::Write, Err(broken_message.clone())),
-            UnlockAll,
-            Try(Method::Write, Err(broken_message.clone())),
-            Try(Method::Write, Err(broken_message.clone())),
-            Try(Method::Write, Err(broken_message.clone())),
-            UnlockAll,
-        ],
-    );
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Write, Ok(())),
-            Try(
-                Method::Read,
-                Err(StrategyLogicError::ConcurrentReadAndWrite.to_string()),
-            ),
-            Try(Method::Write, Err(broken_message.clone())),
-            Try(Method::Read, Err(broken_message.clone())),
-            UnlockAll,
-            Try(Method::Read, Err(broken_message.clone())),
-            Try(Method::Write, Err(broken_message.clone())),
-            UnlockAll,
-        ],
-    );
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_always_allow)),
-        &[
-            Try(Method::Write, Ok(())),
-            Try(
-                Method::Write,
-                Err(StrategyLogicError::ConcurrentMultipleWrites.to_string()),
-            ),
-            Try(Method::Read, Err(broken_message.clone())),
-            Try(Method::Write, Err(broken_message.clone())),
-            UnlockAll,
-            Try(Method::Write, Err(broken_message.clone())),
-            Try(Method::Read, Err(broken_message.clone())),
-            UnlockAll,
-        ],
-    );
-
-    try_strategy(
-        &StdRwLock::new_strategied((), Box::new(test_strategies::broken_block_on_second)),
-        &[
-            Try(Method::Read, Ok(())),
-            Try(
-                Method::Read,
-                Err(StrategyLogicError::BlockedAfterOkState.to_string()),
-            ),
-            Try(Method::Read, Err(broken_message.clone())),
-            Try(Method::Write, Err(broken_message.clone())),
-            Try(Method::Write, Err(broken_message.clone())),
-            UnlockAll,
-            Try(Method::Write, Err(broken_message.clone())),
-            Try(Method::Read, Err(broken_message.clone())),
-            Try(Method::Read, Err(broken_message.clone())),
-            Try(Method::Write, Err(broken_message.clone())),
-            Try(Method::Read, Err(broken_message.clone())),
-            UnlockAll,
-            Try(Method::Read, Err(broken_message.clone())),
-            UnlockAll,
-        ],
-    );
+    rwlock_utils::broken_strategy_try_after_broken::<StdRwLock<()>, _>();
+    rwlock_utils::broken_strategy_try_after_broken::<StdRwLock<i32>, _>();
 }
 
 #[test]
@@ -408,5 +201,5 @@ fn load_test() {
     const READS: usize = if cfg!(miri) { 12 } else { 2048 };
 
     let num = StdRwLock::new_strategied(0usize, Box::new(strategies::fair));
-    load_test_with(num, THREADS, WRITES, READS);
+    rwlock_utils::load_test_with(num, THREADS, WRITES, READS);
 }

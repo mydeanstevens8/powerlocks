@@ -2,6 +2,8 @@ pub mod strategies;
 mod try_strategy;
 pub use try_strategy::*;
 
+use crate::rwlock_utils::TryStrategyAttempt::{Try, UnlockAll};
+
 use std::{
     fmt::Debug,
     hint::black_box,
@@ -9,7 +11,10 @@ use std::{
     thread,
 };
 
-use powerlocks::{primitives::TryLockError, rwlock::RwLockApi};
+use powerlocks::{
+    primitives::TryLockError,
+    rwlock::{Method, RwLockApi, StrategiedRwLockApi},
+};
 
 use crate::utils::race_checker::{CheckerHandles, RaceChecker};
 
@@ -176,6 +181,256 @@ pub fn poison_on_write<A: RwLockApi<()> + Sync>(lock: &A) {
         assert_eq!(*lock.try_read().unwrap(), ());
         assert_eq!(*lock.try_write().unwrap(), ());
     })
+}
+
+pub fn broken_strategy_one_read<A: StrategiedRwLockApi<T> + Sync, T: Default + Sync>() {
+    try_strategy::<String, _>(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Read, Ok(())),
+            UnlockAll,
+            Try(Method::Read, Ok(())),
+            UnlockAll,
+        ],
+    );
+}
+
+pub fn broken_strategy_one_write<A: StrategiedRwLockApi<T> + Sync, T: Default + Sync>() {
+    try_strategy::<String, _>(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Write, Ok(())),
+            UnlockAll,
+            Try(Method::Write, Ok(())),
+            UnlockAll,
+        ],
+    );
+}
+
+pub fn broken_strategy_sequential_read_then_write<
+    A: StrategiedRwLockApi<T> + Sync,
+    T: Default + Sync,
+>() {
+    try_strategy::<String, _>(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Read, Ok(())),
+            UnlockAll,
+            Try(Method::Write, Ok(())),
+            UnlockAll,
+            Try(Method::Read, Ok(())),
+            Try(Method::Read, Ok(())),
+            UnlockAll,
+            Try(Method::Write, Ok(())),
+            UnlockAll,
+        ],
+    );
+}
+
+pub fn broken_strategy_multiple_reads<A: StrategiedRwLockApi<T> + Sync, T: Default + Sync>() {
+    try_strategy::<String, _>(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Read, Ok(())),
+            UnlockAll,
+            Try(Method::Read, Ok(())),
+            Try(Method::Read, Ok(())),
+            UnlockAll,
+            Try(Method::Read, Ok(())),
+            Try(Method::Read, Ok(())),
+            Try(Method::Read, Ok(())),
+            UnlockAll,
+        ],
+    );
+}
+
+pub fn broken_strategy_read_then_write<A: StrategiedRwLockApi<T> + Sync, T: Default + Sync>() {
+    // Although the strategy here is to test `StdRwLock` as a black-box, this private
+    // white-box type is only used to fetch the actual error message we expect. It does couple
+    // the test to white-box details, but saves verbosity in writing out the error message, which
+    // is not important to test.
+    let expected_message = StrategyLogicError::ConcurrentReadAndWrite.to_string();
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Read, Ok(())),
+            Try(Method::Write, Err(expected_message.clone())),
+            UnlockAll,
+        ],
+    );
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Read, Ok(())),
+            Try(Method::Read, Ok(())),
+            Try(Method::Write, Err(expected_message.clone())),
+            UnlockAll,
+        ],
+    );
+}
+
+pub fn broken_strategy_write_then_read<A: StrategiedRwLockApi<T> + Sync, T: Default + Sync>() {
+    let expected_message = StrategyLogicError::ConcurrentReadAndWrite.to_string();
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Write, Ok(())),
+            Try(Method::Read, Err(expected_message.clone())),
+            UnlockAll,
+        ],
+    );
+}
+
+pub fn broken_strategy_two_writes<A: StrategiedRwLockApi<T> + Sync, T: Default + Sync>() {
+    let expected_message = StrategyLogicError::ConcurrentMultipleWrites.to_string();
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Write, Ok(())),
+            Try(Method::Write, Err(expected_message.clone())),
+            UnlockAll,
+        ],
+    );
+}
+
+pub fn broken_strategy_ok_then_blocked<A: StrategiedRwLockApi<T> + Sync, T: Default + Sync>() {
+    let expected_message = StrategyLogicError::BlockedAfterOkState.to_string();
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_block_on_second)),
+        &[
+            Try(Method::Read, Ok(())),
+            Try(Method::Read, Err(expected_message.clone())),
+            UnlockAll,
+        ],
+    );
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_block_on_second)),
+        &[
+            Try(Method::Read, Ok(())),
+            Try(Method::Write, Err(expected_message.clone())),
+            UnlockAll,
+        ],
+    );
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_block_on_second)),
+        &[
+            Try(Method::Write, Ok(())),
+            Try(Method::Read, Err(expected_message.clone())),
+            UnlockAll,
+        ],
+    );
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_block_on_second)),
+        &[
+            Try(Method::Write, Ok(())),
+            Try(Method::Write, Err(expected_message.clone())),
+            UnlockAll,
+        ],
+    );
+}
+
+pub fn broken_strategy_try_after_broken<A: StrategiedRwLockApi<T> + Sync, T: Default + Sync>() {
+    let broken_message = StrategyLogicError::BrokenLock.to_string();
+
+    // Try more after breakage
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Read, Ok(())),
+            Try(
+                Method::Write,
+                Err(StrategyLogicError::ConcurrentReadAndWrite.to_string()),
+            ),
+            Try(Method::Read, Err(broken_message.clone())),
+            UnlockAll,
+            Try(Method::Read, Err(broken_message.clone())),
+            Try(Method::Read, Err(broken_message.clone())),
+            UnlockAll,
+        ],
+    );
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Read, Ok(())),
+            Try(Method::Read, Ok(())),
+            Try(
+                Method::Write,
+                Err(StrategyLogicError::ConcurrentReadAndWrite.to_string()),
+            ),
+            Try(Method::Write, Err(broken_message.clone())),
+            UnlockAll,
+            Try(Method::Write, Err(broken_message.clone())),
+            Try(Method::Write, Err(broken_message.clone())),
+            Try(Method::Write, Err(broken_message.clone())),
+            UnlockAll,
+        ],
+    );
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Write, Ok(())),
+            Try(
+                Method::Read,
+                Err(StrategyLogicError::ConcurrentReadAndWrite.to_string()),
+            ),
+            Try(Method::Write, Err(broken_message.clone())),
+            Try(Method::Read, Err(broken_message.clone())),
+            UnlockAll,
+            Try(Method::Read, Err(broken_message.clone())),
+            Try(Method::Write, Err(broken_message.clone())),
+            UnlockAll,
+        ],
+    );
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_always_allow)),
+        &[
+            Try(Method::Write, Ok(())),
+            Try(
+                Method::Write,
+                Err(StrategyLogicError::ConcurrentMultipleWrites.to_string()),
+            ),
+            Try(Method::Read, Err(broken_message.clone())),
+            Try(Method::Write, Err(broken_message.clone())),
+            UnlockAll,
+            Try(Method::Write, Err(broken_message.clone())),
+            Try(Method::Read, Err(broken_message.clone())),
+            UnlockAll,
+        ],
+    );
+
+    try_strategy(
+        &A::new_strategied(T::default(), Box::new(strategies::broken_block_on_second)),
+        &[
+            Try(Method::Read, Ok(())),
+            Try(
+                Method::Read,
+                Err(StrategyLogicError::BlockedAfterOkState.to_string()),
+            ),
+            Try(Method::Read, Err(broken_message.clone())),
+            Try(Method::Write, Err(broken_message.clone())),
+            Try(Method::Write, Err(broken_message.clone())),
+            UnlockAll,
+            Try(Method::Write, Err(broken_message.clone())),
+            Try(Method::Read, Err(broken_message.clone())),
+            Try(Method::Read, Err(broken_message.clone())),
+            Try(Method::Write, Err(broken_message.clone())),
+            Try(Method::Read, Err(broken_message.clone())),
+            UnlockAll,
+            Try(Method::Read, Err(broken_message.clone())),
+            UnlockAll,
+        ],
+    );
 }
 
 pub fn suppress_panic_message<T>(f: impl FnOnce() -> T) -> T {
