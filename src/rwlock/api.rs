@@ -2,6 +2,11 @@ use core::ops::{Deref, DerefMut};
 
 use crate::primitives::{LockResult, TryLockError, TryLockResult};
 
+use super::Strategy;
+
+extern crate alloc;
+use alloc::boxed::Box;
+
 pub trait RwLockReadGuardApi<'a, T: 'a + ?Sized>: Deref<Target = T> {}
 pub trait RwLockWriteGuardApi<'a, T: 'a + ?Sized>:
     Deref<Target = T> + DerefMut<Target = T>
@@ -60,6 +65,13 @@ pub trait RwLockApi<T: ?Sized> {
     }
 
     fn clear_poison(&self) {}
+}
+
+pub trait StrategiedRwLockApi<T: ?Sized>: RwLockApi<T> {
+    fn new_strategied(t: T, strategy: Box<dyn Strategy>) -> Self
+    where
+        Self: Sized,
+        T: Sized;
 }
 
 #[cfg(feature = "std")]

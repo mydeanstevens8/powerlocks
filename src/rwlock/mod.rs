@@ -435,6 +435,16 @@ impl<T: ?Sized, H: Handle> RwLockApi<T> for BaseRwLock<T, H> {
     }
 }
 
+impl<T: ?Sized, H: Handle> StrategiedRwLockApi<T> for BaseRwLock<T, H> {
+    fn new_strategied(t: T, strategy: Box<dyn Strategy>) -> Self
+    where
+        Self: Sized,
+        T: Sized,
+    {
+        Self::new_strategied(t, strategy)
+    }
+}
+
 pub type CoreRwLockReadGuard<'a, T> = BaseRwLockReadGuard<'a, T, CoreHandle>;
 pub type CoreRwLockWriteGuard<'a, T> = BaseRwLockWriteGuard<'a, T, CoreHandle>;
 pub type CoreRwLock<T> = BaseRwLock<T, CoreHandle>;
