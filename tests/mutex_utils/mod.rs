@@ -1,8 +1,8 @@
 #![cfg(feature = "mutex")]
 
-use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind, set_hook, take_hook};
-
 pub mod tests;
+
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind, set_hook, take_hook};
 
 pub fn suppress_panic_message<T>(f: impl FnOnce() -> T) -> T {
     set_hook(Box::new(|_| {}));

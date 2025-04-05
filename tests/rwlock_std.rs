@@ -8,6 +8,7 @@ use std::{
 use powerlocks::rwlock::{StdRwLock, StdRwLockReadGuard, StdRwLockWriteGuard, strategies};
 
 mod rwlock_utils;
+use rwlock_utils::tests;
 
 mod utils;
 use utils::{assert_is_trait, race_checker::RaceChecker};
@@ -86,10 +87,10 @@ fn assert_trait() {
 
 #[test]
 fn run_single_thread() {
-    rwlock_utils::run_single_thread::<StdRwLock<_>, ()>();
-    rwlock_utils::run_single_thread::<StdRwLock<_>, bool>();
-    rwlock_utils::run_single_thread::<StdRwLock<_>, i32>();
-    rwlock_utils::run_single_thread::<StdRwLock<_>, usize>();
+    tests::run_single_thread::<StdRwLock<_>, ()>();
+    tests::run_single_thread::<StdRwLock<_>, bool>();
+    tests::run_single_thread::<StdRwLock<_>, i32>();
+    tests::run_single_thread::<StdRwLock<_>, usize>();
 }
 
 #[test]
@@ -108,7 +109,7 @@ fn run_single_thread_vec() {
 
 #[test]
 fn race_reads() {
-    rwlock_utils::race_reads(&StdRwLock::new_strategied(
+    tests::race_reads(&StdRwLock::new_strategied(
         RaceChecker::new(),
         Box::new(strategies::fair),
     ));
@@ -116,7 +117,7 @@ fn race_reads() {
 
 #[test]
 fn race_writes() {
-    rwlock_utils::race_writes(&StdRwLock::new_strategied(
+    tests::race_writes(&StdRwLock::new_strategied(
         RaceChecker::new(),
         Box::new(strategies::fair),
     ));
@@ -124,7 +125,7 @@ fn race_writes() {
 
 #[test]
 fn race_fair_writes_and_reads() {
-    rwlock_utils::race_fair_writes_and_reads(&StdRwLock::new_strategied(
+    tests::race_fair_writes_and_reads(&StdRwLock::new_strategied(
         RaceChecker::new(),
         Box::new(strategies::fair),
     ));
@@ -132,66 +133,66 @@ fn race_fair_writes_and_reads() {
 
 #[test]
 fn no_poison_on_read() {
-    rwlock_utils::no_poison_on_read(&StdRwLock::new(()));
+    tests::no_poison_on_read(&StdRwLock::new(()));
 }
 
 #[test]
 fn poison_on_write() {
-    rwlock_utils::poison_on_write(&StdRwLock::new(()));
+    tests::poison_on_write(&StdRwLock::new(()));
 }
 
 #[test]
 fn broken_strategy_one_read() {
-    rwlock_utils::broken_strategy_one_read::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_one_read::<StdRwLock<i32>, _>();
+    tests::broken_strategy_one_read::<StdRwLock<()>, _>();
+    tests::broken_strategy_one_read::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_one_write() {
-    rwlock_utils::broken_strategy_one_write::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_one_write::<StdRwLock<i32>, _>();
+    tests::broken_strategy_one_write::<StdRwLock<()>, _>();
+    tests::broken_strategy_one_write::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_sequential_read_then_write() {
-    rwlock_utils::broken_strategy_sequential_read_then_write::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_sequential_read_then_write::<StdRwLock<i32>, _>();
+    tests::broken_strategy_sequential_read_then_write::<StdRwLock<()>, _>();
+    tests::broken_strategy_sequential_read_then_write::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_multiple_reads() {
-    rwlock_utils::broken_strategy_multiple_reads::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_multiple_reads::<StdRwLock<i32>, _>();
+    tests::broken_strategy_multiple_reads::<StdRwLock<()>, _>();
+    tests::broken_strategy_multiple_reads::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_read_then_write() {
-    rwlock_utils::broken_strategy_read_then_write::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_read_then_write::<StdRwLock<i32>, _>();
+    tests::broken_strategy_read_then_write::<StdRwLock<()>, _>();
+    tests::broken_strategy_read_then_write::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_write_then_read() {
-    rwlock_utils::broken_strategy_write_then_read::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_write_then_read::<StdRwLock<i32>, _>();
+    tests::broken_strategy_write_then_read::<StdRwLock<()>, _>();
+    tests::broken_strategy_write_then_read::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_two_writes() {
-    rwlock_utils::broken_strategy_two_writes::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_two_writes::<StdRwLock<i32>, _>();
+    tests::broken_strategy_two_writes::<StdRwLock<()>, _>();
+    tests::broken_strategy_two_writes::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_ok_then_blocked() {
-    rwlock_utils::broken_strategy_ok_then_blocked::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_ok_then_blocked::<StdRwLock<i32>, _>();
+    tests::broken_strategy_ok_then_blocked::<StdRwLock<()>, _>();
+    tests::broken_strategy_ok_then_blocked::<StdRwLock<i32>, _>();
 }
 
 #[test]
 fn broken_strategy_try_after_broken() {
-    rwlock_utils::broken_strategy_try_after_broken::<StdRwLock<()>, _>();
-    rwlock_utils::broken_strategy_try_after_broken::<StdRwLock<i32>, _>();
+    tests::broken_strategy_try_after_broken::<StdRwLock<()>, _>();
+    tests::broken_strategy_try_after_broken::<StdRwLock<i32>, _>();
 }
 
 #[test]
@@ -201,5 +202,5 @@ fn load_test() {
     const READS: usize = if cfg!(miri) { 12 } else { 2048 };
 
     let num = StdRwLock::new_strategied(0usize, Box::new(strategies::fair));
-    rwlock_utils::load_test_with(num, THREADS, WRITES, READS);
+    tests::load_test_with(num, THREADS, WRITES, READS);
 }
