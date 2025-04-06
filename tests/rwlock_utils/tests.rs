@@ -1,3 +1,5 @@
+#![allow(dead_code, reason = "Some functions are not used by importing tests.")]
+
 use super::{
     strategies, suppress_panic_message,
     try_strategy::{
