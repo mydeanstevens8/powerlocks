@@ -129,8 +129,8 @@ fn poison_on_write() {
 
 #[test]
 fn load_test() {
-    const THREADS: usize = if cfg!(miri) { 3 } else { 16 };
-    const WRITES: usize = if cfg!(miri) { 3 } else { 256 };
+    const THREADS: usize = if cfg!(miri) { 4 } else { 24 };
+    const WRITES: usize = if cfg!(miri) { 4 } else { 512 };
     const READS: usize = if cfg!(miri) { 12 } else { 2048 };
 
     let num = StdRwLock::new(0usize);
