@@ -102,8 +102,6 @@ impl<K: RwLockHook, H: Handle> BaseRwLockInner<K, H> {
     }
 
     fn try_lock(&self, method: Method) -> TryLockResult<()> {
-        method.switch(|| self.hook.before_read(), || self.hook.before_write());
-
         match (
             self.critical_section(|state| state.alloc(method)),
             !self.is_poisoned(),
@@ -117,8 +115,6 @@ impl<K: RwLockHook, H: Handle> BaseRwLockInner<K, H> {
     fn unlock(&self, method: Method, poison: bool) {
         self.critical_section(|state| state.free(method));
         self.poison.fetch_or(poison, Ordering::AcqRel);
-
-        method.switch(|| self.hook.after_read(), || self.hook.after_write());
     }
 }
 
@@ -204,6 +200,8 @@ impl<T: ?Sized, K: RwLockHook, H: Handle> BaseRwLock<T, K, H> {
     }
 
     pub fn try_read(&self) -> TryLockResult<BaseRwLockReadGuard<'_, T, K, H>> {
+        self.inner.hook.try_read().to_result()?;
+
         // SAFETY: The lock is acquired before guard creation by `try_lock`.
         map_ok_and_poisoned(self.inner.try_lock(Method::Read), |_| unsafe {
             BaseRwLockReadGuard::new(self)
@@ -215,6 +213,8 @@ impl<T: ?Sized, K: RwLockHook, H: Handle> BaseRwLock<T, K, H> {
     }
 
     pub fn try_write(&self) -> TryLockResult<BaseRwLockWriteGuard<'_, T, K, H>> {
+        self.inner.hook.try_write().to_result()?;
+
         // SAFETY: The lock is acquired before guard creation by `try_lock`.
         map_ok_and_poisoned(self.inner.try_lock(Method::Write), |_| unsafe {
             BaseRwLockWriteGuard::new(self)
@@ -366,6 +366,7 @@ where
 {
     fn drop(&mut self) {
         self.inner.unlock(Method::Read, false);
+        self.inner.hook.after_read();
     }
 }
 
@@ -449,6 +450,7 @@ where
 {
     fn drop(&mut self) {
         self.inner.unlock(Method::Write, H::dumb().panicking());
+        self.inner.hook.after_write();
     }
 }
 
