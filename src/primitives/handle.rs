@@ -43,6 +43,19 @@ impl Deref for HandleId {
     }
 }
 
+/// The core primitive for interacting with a thread environment, independent of the OS.
+///
+/// # Safety
+/// Libraries may assume that this `Handle` is correctly implemented. In particular, the following
+/// properties must hold for each handle:
+///  - `new` must always return a `Handle` with a unique [`HandleId`] every time it is called. No
+///    two `HandleId`s can be the same using `new`.
+///  - `dumb` must always return a `Handle` with the same `HandleId` every time it is called. It
+///    cannot return different `HandleIds` on each invocation.
+///
+/// Failing to uphold these properties may lead to incorrect synchronization in crate libraries,
+/// enabling data races and undefined behavior.
+///
 pub unsafe trait Handle {
     fn new() -> Self
     where
