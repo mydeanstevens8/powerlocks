@@ -6,7 +6,7 @@ use std::{
     thread::{self, Builder, Scope},
 };
 
-use powerlocks::rwlock::{Method, RwLockApi};
+use powerlocks::strategied_rwlock::{Method, RwLockApi};
 
 macro_rules! error_type {
         ($vis:vis $name:ident { $($option:ident($message:literal)),* $(,)? }) => {

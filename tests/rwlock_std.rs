@@ -5,7 +5,9 @@ use std::{
     panic::{RefUnwindSafe, UnwindSafe},
 };
 
-use powerlocks::rwlock::{StdRwLock, StdRwLockReadGuard, StdRwLockWriteGuard, strategies};
+use powerlocks::strategied_rwlock::{
+    StdRwLock, StdRwLockReadGuard, StdRwLockWriteGuard, strategies,
+};
 
 mod rwlock_utils;
 use rwlock_utils::tests;
