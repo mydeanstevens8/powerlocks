@@ -329,7 +329,7 @@ pub(super) struct Queue<H: Handle> {
 impl<H: Handle> Queue<H> {
     pub(super) const fn new(strategy: Box<dyn Strategy>) -> Self {
         Self {
-            inner: Mutex::new(LockedQueue {
+            inner: Mutex::new_unhooked(LockedQueue {
                 queue: VecDeque::new(),
                 strategy,
                 broken: false,

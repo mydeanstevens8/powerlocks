@@ -1,6 +1,26 @@
 use core::ops::{Deref, DerefMut};
 
-use crate::primitives::{LockResult, TryLockError, TryLockResult};
+use crate::primitives::{LockResult, ShouldBlock, TryLockError, TryLockResult};
+
+pub trait MutexHook {
+    fn try_lock(&self) -> ShouldBlock {
+        ShouldBlock::Ok
+    }
+
+    fn after_lock(&self) {}
+
+    fn new() -> Self
+    where
+        Self: Sized;
+}
+
+impl MutexHook for () {
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+    }
+}
 
 pub trait MutexGuardApi<'a, T: 'a + ?Sized>: Deref<Target = T> + DerefMut<Target = T> {}
 
