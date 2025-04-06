@@ -231,7 +231,7 @@ pub type CoreMutex<T> = BaseMutex<T, CoreHandle>;
 pub type CoreMutexGuard<'a, T> = BaseMutexGuard<'a, T, CoreHandle>;
 
 #[cfg(feature = "std")]
-mod ultimate_types {
+mod std_types {
     use super::{BaseMutex, BaseMutexGuard};
     use crate::primitives::StdHandle;
 
@@ -239,18 +239,19 @@ mod ultimate_types {
     pub type StdMutexGuard<'a, T> = BaseMutexGuard<'a, T, StdHandle>;
 }
 
-pub use ultimate_types::*;
+#[cfg(feature = "std")]
+pub use std_types::*;
 
 #[cfg(not(feature = "std"))]
 mod types {
-    use super::*;
+    use super::{CoreMutex, CoreMutexGuard};
     pub type Mutex<T> = CoreMutex<T>;
     pub type MutexGuard<'a, T> = CoreMutexGuard<'a, T>;
 }
 
 #[cfg(feature = "std")]
 mod types {
-    use super::*;
+    use super::{StdMutex, StdMutexGuard};
     pub type Mutex<T> = StdMutex<T>;
     pub type MutexGuard<'a, T> = StdMutexGuard<'a, T>;
 }
