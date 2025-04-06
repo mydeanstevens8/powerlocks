@@ -36,11 +36,11 @@ impl Method {
 struct State(usize);
 
 impl State {
-    pub fn new() -> Self {
+    const fn new() -> Self {
         Self(usize::MIN)
     }
 
-    pub fn alloc(&mut self, method: Method) -> bool {
+    fn alloc(&mut self, method: Method) -> bool {
         let available = method.switch(|| self.0 < usize::MAX - 1, || self.0 == usize::MIN);
         if available {
             self.0 = method.switch(|| self.0 + 1, || usize::MAX);
@@ -48,7 +48,7 @@ impl State {
         available
     }
 
-    pub fn free(&mut self, method: Method) {
+    fn free(&mut self, method: Method) {
         method.switch(
             || assert!(usize::MIN < self.0 && self.0 < usize::MAX),
             || assert_eq!(self.0, usize::MAX),
@@ -64,6 +64,18 @@ struct BaseRwLockInner<K: RwLockHook, H: Handle> {
     poison: AtomicBool,
     hook: K,
     handle_type: PhantomData<H>,
+}
+
+impl<H: Handle> BaseRwLockInner<(), H> {
+    const fn new_unhooked() -> Self {
+        Self {
+            mutex: AtomicBool::new(false),
+            state: UnsafeCell::new(State::new()),
+            poison: AtomicBool::new(false),
+            hook: (),
+            handle_type: PhantomData,
+        }
+    }
 }
 
 impl<K: RwLockHook, H: Handle> BaseRwLockInner<K, H> {
@@ -167,7 +179,25 @@ fn block_try_lock<T>(mut routine: impl FnMut() -> TryLockResult<T>) -> LockResul
     }
 }
 
-impl<T: ?Sized, K: RwLockHook, H: Handle> BaseRwLock<T, K, H> {
+impl<T, H> BaseRwLock<T, (), H>
+where
+    T: Sized,
+    H: Handle,
+{
+    pub const fn new_unhooked(t: T) -> Self {
+        Self {
+            inner: BaseRwLockInner::new_unhooked(),
+            data: UnsafeCell::new(t),
+        }
+    }
+}
+
+impl<T, K, H> BaseRwLock<T, K, H>
+where
+    T: ?Sized,
+    K: RwLockHook,
+    H: Handle,
+{
     pub fn new(t: T) -> Self
     where
         Self: Sized,
