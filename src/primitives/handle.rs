@@ -10,7 +10,7 @@ mod handle_type {
 
 use handle_type::{HandleIdAtomicBase, HandleIdBase};
 
-static HANDLE_COUNTER: HandleIdAtomicBase = HandleIdAtomicBase::new(1);
+static HANDLE_COUNTER: HandleIdAtomicBase = HandleIdAtomicBase::new_unhooked(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HandleId(HandleIdBase);
