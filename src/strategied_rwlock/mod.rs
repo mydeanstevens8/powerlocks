@@ -17,7 +17,10 @@ use core::{
 extern crate alloc;
 use alloc::{boxed::Box, sync::Arc};
 
-use crate::primitives::{CoreHandle, Handle, HandleId, LockResult, TryLockError, TryLockResult};
+use crate::{
+    primitives::{CoreHandle, Handle, HandleId, LockResult, TryLockError, TryLockResult},
+    rwlock::{RwLockApi, RwLockReadGuardApi, RwLockWriteGuardApi},
+};
 
 ///
 /// Denotes the type of operation that a Thread is performing on a [`RwLock`]. Used by
@@ -41,7 +44,7 @@ impl Method {
     ///
     /// # Examples
     /// ```
-    /// # use powerlocks::rwlock::Method;
+    /// # use powerlocks::strategied_rwlock::Method;
     /// let method = Method::Read;
     /// assert!(method.is_read());
     ///
@@ -58,7 +61,7 @@ impl Method {
     ///
     /// # Examples
     /// ```
-    /// # use powerlocks::rwlock::Method;
+    /// # use powerlocks::strategied_rwlock::Method;
     /// let method = Method::Write;
     /// assert!(method.is_write());
     ///
@@ -96,7 +99,7 @@ impl State {
     ///
     /// # Examples
     /// ```
-    /// # use powerlocks::rwlock::State;
+    /// # use powerlocks::strategied_rwlock::State;
     /// let state = State::Ok;
     /// assert!(state.is_ok());
     ///
@@ -113,7 +116,7 @@ impl State {
     ///
     /// # Examples
     /// ```
-    /// # use powerlocks::rwlock::State;
+    /// # use powerlocks::strategied_rwlock::State;
     /// let state = State::Blocked;
     /// assert!(state.is_blocked());
     ///
