@@ -57,6 +57,7 @@ impl State {
     }
 }
 
+#[derive(Debug)]
 struct BaseRwLockInner<K: RwLockHook, H: Handle> {
     mutex: AtomicBool,
     state: UnsafeCell<State>,
@@ -112,7 +113,7 @@ impl<K: RwLockHook, H: Handle> BaseRwLockInner<K, H> {
         }
     }
 
-    fn unlock(&self, method: Method, poison: bool) {
+    unsafe fn unlock(&self, method: Method, poison: bool) {
         self.critical_section(|state| state.free(method));
         self.poison.fetch_or(poison, Ordering::AcqRel);
     }
@@ -124,6 +125,7 @@ unsafe impl<K: RwLockHook, H: Handle> Sync for BaseRwLockInner<K, H> {}
 impl<K: RwLockHook, H: Handle> UnwindSafe for BaseRwLockInner<K, H> {}
 impl<K: RwLockHook, H: Handle> RefUnwindSafe for BaseRwLockInner<K, H> {}
 
+#[derive(Debug)]
 pub struct BaseRwLock<T, K, H>
 where
     T: ?Sized,
@@ -319,6 +321,29 @@ where
 {
 }
 
+impl<T, K, H> Default for BaseRwLock<T, K, H>
+where
+    T: Default,
+    K: RwLockHook,
+    H: Handle,
+{
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
+impl<T, K, H> From<T> for BaseRwLock<T, K, H>
+where
+    K: RwLockHook,
+    H: Handle,
+{
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
+#[derive(Debug)]
+#[must_use = "if unused the read-write-lock will immediately unlock"]
 pub struct BaseRwLockReadGuard<'a, T, K, H>
 where
     T: 'a + ?Sized,
@@ -365,7 +390,7 @@ where
     H: Handle,
 {
     fn drop(&mut self) {
-        self.inner.unlock(Method::Read, false);
+        unsafe { self.inner.unlock(Method::Read, false) };
         self.inner.hook.after_read();
     }
 }
@@ -393,6 +418,8 @@ where
 {
 }
 
+#[derive(Debug)]
+#[must_use = "if unused the read-write-lock will immediately unlock"]
 pub struct BaseRwLockWriteGuard<'a, T, K, H>
 where
     T: 'a + ?Sized,
@@ -449,7 +476,7 @@ where
     H: Handle,
 {
     fn drop(&mut self) {
-        self.inner.unlock(Method::Write, H::dumb().panicking());
+        unsafe { self.inner.unlock(Method::Write, H::dumb().panicking()) };
         self.inner.hook.after_write();
     }
 }
