@@ -10,10 +10,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::{
-    primitives::{CoreHandle, Handle, LockResult, PoisonError, TryLockError, TryLockResult},
-    strategied_rwlock::{RwLockApi, RwLockReadGuardApi, RwLockWriteGuardApi},
-};
+use crate::primitives::{CoreHandle, Handle, LockResult, PoisonError, TryLockError, TryLockResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Method {

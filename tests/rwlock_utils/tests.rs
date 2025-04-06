@@ -11,7 +11,8 @@ use super::{
 use crate::utils::race_checker::{CheckerHandles, RaceChecker};
 use powerlocks::{
     primitives::TryLockError,
-    strategied_rwlock::{Method, RwLockApi, StrategiedRwLockApi},
+    rwlock::RwLockApi,
+    strategied_rwlock::{Method, StrategiedRwLockApi},
 };
 use std::{fmt::Debug, hint::black_box, thread};
 
