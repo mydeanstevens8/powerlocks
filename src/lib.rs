@@ -6,7 +6,7 @@ pub mod primitives;
 pub mod mutex;
 
 #[cfg(feature = "rwlock")]
-pub mod rwlock;
+pub mod strategied_rwlock;
 
 #[cfg(feature = "rwlock")]
-pub mod primitive_rwlock;
+pub mod rwlock;

@@ -1,6 +1,6 @@
 use std::iter;
 
-use powerlocks::rwlock::{State, StrategyInput, StrategyResult};
+use powerlocks::strategied_rwlock::{State, StrategyInput, StrategyResult};
 
 pub fn broken_always_allow(entries: StrategyInput) -> StrategyResult {
     Box::new(entries.map(|_| State::Ok))
