@@ -1,10 +1,11 @@
 #!/usr/bin/env python
+import os
+import itertools
+import threading
+import typing as t
+
 features = {"mutex", "rwlock", "std"}
 
-import os;
-import itertools;
-import threading;
-import typing as t;
 
 def permute_features_parallel(target: t.Callable[[t.Iterable[str]], None]):
     features_permuted = []
@@ -13,18 +14,17 @@ def permute_features_parallel(target: t.Callable[[t.Iterable[str]], None]):
 
     threads: t.List[threading.Thread] = []
     for selected_features in features_permuted:
-        thread = threading.Thread(
-            target = target, 
-            args = (selected_features, )
-        )
+        thread = threading.Thread(target=target, args=(selected_features,))
         thread.start()
         threads.append(thread)
-    
+
     for thread in threads:
         thread.join()
 
 
 script_error = threading.Event()
+
+
 def run(command: str) -> bool:
     global script_error
     if os.system(command) != 0:
