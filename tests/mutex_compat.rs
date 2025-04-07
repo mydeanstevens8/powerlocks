@@ -1,4 +1,4 @@
-#![cfg(feature = "mutex")]
+#![cfg(all(feature = "mutex", feature = "std"))]
 
 mod mutex_utils;
 mod utils;
