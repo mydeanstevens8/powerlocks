@@ -1,4 +1,3 @@
-import common
 from common import run, done
 
 if __name__ == "__main__":
