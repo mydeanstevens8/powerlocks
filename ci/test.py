@@ -1,11 +1,12 @@
 #!/usr/bin/env python
-import typing as t;
+import typing as t
+import common
+from common import run, done
 
-import common;
-from common import run, done;
 
 def test_features(features: t.Iterable[str]):
-    run(f'cargo test --features "{','.join(features)}"')
+    run(f'cargo test --features "{",".join(features)}"')
+
 
 if __name__ == "__main__":
     print("Clean", flush=True)
