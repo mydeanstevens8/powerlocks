@@ -275,10 +275,7 @@ impl<'a, T: 'a + ?Sized, H: Handle> DerefMut for BaseRwLockWriteGuard<'a, T, H> 
 impl<'a, T: 'a + ?Sized, H: Handle> Drop for BaseRwLockWriteGuard<'a, T, H> {
     fn drop(&mut self) {
         // SAFETY: `Queue` ensures that we have the only access as required here.
-        unsafe {
-            self.lock
-                .finish_write(&self.handle, self.handle.panicking())
-        }
+        unsafe { self.lock.finish_write(&self.handle, H::panicking()) }
     }
 }
 
