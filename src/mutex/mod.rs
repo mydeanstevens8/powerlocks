@@ -2,7 +2,7 @@ mod api;
 pub use api::*;
 
 use crate::primitives::{
-    CoreHandle, Handle, LockResult, PoisonError, ShouldBlock, TryLockError, TryLockResult,
+    CoreThreadEnv, LockResult, PoisonError, ShouldBlock, ThreadEnv, TryLockError, TryLockResult,
 };
 use core::{
     cell::UnsafeCell,
@@ -18,7 +18,7 @@ pub struct BaseMutexGuard<'a, T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     lock: &'a BaseMutex<T, K, H>,
     // It may seem as if we could get away with `&mut`, but no! While we are `drop`ping this guard,
@@ -33,7 +33,7 @@ impl<'a, T, K, H> BaseMutexGuard<'a, T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     unsafe fn new(lock: &'a BaseMutex<T, K, H>) -> Self {
         Self {
@@ -47,12 +47,12 @@ impl<T, K, H> Drop for BaseMutexGuard<'_, T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn drop(&mut self) {
         // SAFETY: We're dropping, so we won't use `data` again.
         unsafe {
-            self.lock.unlock(H::dumb().panicking());
+            self.lock.unlock(H::panicking());
         };
 
         self.lock.hook.after_lock();
@@ -63,7 +63,7 @@ impl<T, K, H> Deref for BaseMutexGuard<'_, T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -77,7 +77,7 @@ impl<T, K, H> DerefMut for BaseMutexGuard<'_, T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // SAFETY: `data` is aligned and is guaranteed to point to valid memory via
@@ -95,14 +95,14 @@ unsafe impl<T, K, H> Send for BaseMutexGuard<'_, T, K, H>
 where
     T: ?Sized + Send,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 unsafe impl<T, K, H> Sync for BaseMutexGuard<'_, T, K, H>
 where
     T: ?Sized + Sync,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -111,12 +111,12 @@ pub struct BaseMutex<T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     lock: AtomicBool,
     poison: AtomicBool,
     hook: K,
-    handle_type: PhantomData<H>,
+    thread_env: PhantomData<H>,
     data: UnsafeCell<T>,
 }
 
@@ -131,14 +131,14 @@ fn wrap_lock_result<T>(poisoned: bool, t: T) -> LockResult<T> {
 impl<T, H> BaseMutex<T, (), H>
 where
     T: Sized,
-    H: Handle,
+    H: ThreadEnv,
 {
     pub const fn new_unhooked(data: T) -> Self {
         Self {
             lock: AtomicBool::new(false),
             poison: AtomicBool::new(false),
             hook: (),
-            handle_type: PhantomData,
+            thread_env: PhantomData,
             data: UnsafeCell::new(data),
         }
     }
@@ -148,7 +148,7 @@ impl<T, K, H> BaseMutex<T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     pub fn new(data: T) -> Self
     where
@@ -159,7 +159,7 @@ where
             lock: AtomicBool::new(false),
             poison: AtomicBool::new(false),
             hook: K::new(),
-            handle_type: PhantomData,
+            thread_env: PhantomData,
             data: UnsafeCell::new(data),
         }
     }
@@ -221,7 +221,7 @@ where
         // Otherwise, stay weak in order to conserve efficiency. Guarantee though that the first
         // acquire is strong.
         while !self.try_acquire_locker(attempts % STRONG_ATTEMPT_DIVIDER == 0) {
-            H::dumb().yield_now();
+            H::yield_now();
             attempts = attempts.wrapping_add(1);
         }
         // SAFETY: Repeating `try_acquire_locker` until success guarantees us exclusive access.
@@ -244,7 +244,7 @@ impl<T, K, H> Default for BaseMutex<T, K, H>
 where
     T: Default,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn default() -> Self {
         Self::new(T::default())
@@ -255,7 +255,7 @@ impl<T, K, H> From<T> for BaseMutex<T, K, H>
 where
     T: Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn from(value: T) -> Self {
         Self::new(value)
@@ -268,14 +268,14 @@ unsafe impl<T, K, H> Send for BaseMutex<T, K, H>
 where
     T: ?Sized + Send,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 unsafe impl<T, K, H> Sync for BaseMutex<T, K, H>
 where
     T: ?Sized + Send,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -283,14 +283,14 @@ impl<T, K, H> UnwindSafe for BaseMutex<T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 impl<T, K, H> RefUnwindSafe for BaseMutex<T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -298,7 +298,7 @@ impl<'a, T, K, H> MutexGuardApi<'a, T> for BaseMutexGuard<'a, T, K, H>
 where
     T: 'a + ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -306,7 +306,7 @@ impl<T, K, H> MutexApi<T> for BaseMutex<T, K, H>
 where
     T: ?Sized,
     K: MutexHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn try_lock<'a>(&'a self) -> TryLockResult<impl MutexGuardApi<'a, T>>
     where
@@ -351,16 +351,16 @@ where
     }
 }
 
-pub type CoreMutex<T> = BaseMutex<T, (), CoreHandle>;
-pub type CoreMutexGuard<'a, T> = BaseMutexGuard<'a, T, (), CoreHandle>;
+pub type CoreMutex<T> = BaseMutex<T, (), CoreThreadEnv>;
+pub type CoreMutexGuard<'a, T> = BaseMutexGuard<'a, T, (), CoreThreadEnv>;
 
 #[cfg(feature = "std")]
 mod std_types {
     use super::{BaseMutex, BaseMutexGuard};
-    use crate::primitives::StdHandle;
+    use crate::primitives::StdThreadEnv;
 
-    pub type StdMutex<T> = BaseMutex<T, (), StdHandle>;
-    pub type StdMutexGuard<'a, T> = BaseMutexGuard<'a, T, (), StdHandle>;
+    pub type StdMutex<T> = BaseMutex<T, (), StdThreadEnv>;
+    pub type StdMutexGuard<'a, T> = BaseMutexGuard<'a, T, (), StdThreadEnv>;
 }
 
 #[cfg(feature = "std")]

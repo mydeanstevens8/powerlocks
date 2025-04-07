@@ -10,7 +10,9 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::primitives::{CoreHandle, Handle, LockResult, PoisonError, TryLockError, TryLockResult};
+use crate::primitives::{
+    CoreThreadEnv, LockResult, PoisonError, ThreadEnv, TryLockError, TryLockResult,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Method {
@@ -55,34 +57,34 @@ impl State {
 }
 
 #[derive(Debug)]
-struct BaseRwLockInner<K: RwLockHook, H: Handle> {
+struct BaseRwLockInner<K: RwLockHook, H: ThreadEnv> {
     mutex: AtomicBool,
     state: UnsafeCell<State>,
     poison: AtomicBool,
     hook: K,
-    handle_type: PhantomData<H>,
+    thread_env: PhantomData<H>,
 }
 
-impl<H: Handle> BaseRwLockInner<(), H> {
+impl<H: ThreadEnv> BaseRwLockInner<(), H> {
     const fn new_unhooked() -> Self {
         Self {
             mutex: AtomicBool::new(false),
             state: UnsafeCell::new(State::new()),
             poison: AtomicBool::new(false),
             hook: (),
-            handle_type: PhantomData,
+            thread_env: PhantomData,
         }
     }
 }
 
-impl<K: RwLockHook, H: Handle> BaseRwLockInner<K, H> {
+impl<K: RwLockHook, H: ThreadEnv> BaseRwLockInner<K, H> {
     fn new() -> Self {
         Self {
             mutex: AtomicBool::new(false),
             state: UnsafeCell::new(State::new()),
             poison: AtomicBool::new(false),
             hook: K::new(),
-            handle_type: PhantomData,
+            thread_env: PhantomData,
         }
     }
 
@@ -102,7 +104,7 @@ impl<K: RwLockHook, H: Handle> BaseRwLockInner<K, H> {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
             .is_err()
         {
-            H::dumb().yield_now();
+            H::yield_now();
         }
         // SAFETY: `critical_section` enforces exclusive access via `mutex`. Box the reference in a
         // nested scope to prevent theoretical lifetime escape.
@@ -129,17 +131,17 @@ impl<K: RwLockHook, H: Handle> BaseRwLockInner<K, H> {
 }
 
 // SAFETY: `critical_section` enforces access to the `state` cell variable.
-unsafe impl<K: RwLockHook, H: Handle> Sync for BaseRwLockInner<K, H> {}
+unsafe impl<K: RwLockHook, H: ThreadEnv> Sync for BaseRwLockInner<K, H> {}
 
-impl<K: RwLockHook, H: Handle> UnwindSafe for BaseRwLockInner<K, H> {}
-impl<K: RwLockHook, H: Handle> RefUnwindSafe for BaseRwLockInner<K, H> {}
+impl<K: RwLockHook, H: ThreadEnv> UnwindSafe for BaseRwLockInner<K, H> {}
+impl<K: RwLockHook, H: ThreadEnv> RefUnwindSafe for BaseRwLockInner<K, H> {}
 
 #[derive(Debug)]
 pub struct BaseRwLock<T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     inner: BaseRwLockInner<K, H>,
     data: UnsafeCell<T>,
@@ -179,7 +181,7 @@ fn block_try_lock<T>(mut routine: impl FnMut() -> TryLockResult<T>) -> LockResul
 impl<T, H> BaseRwLock<T, (), H>
 where
     T: Sized,
-    H: Handle,
+    H: ThreadEnv,
 {
     pub const fn new_unhooked(t: T) -> Self {
         Self {
@@ -193,7 +195,7 @@ impl<T, K, H> BaseRwLock<T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     pub fn new(t: T) -> Self
     where
@@ -259,7 +261,7 @@ impl<T, K, H> RwLockApi<T> for BaseRwLock<T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn is_poisoned(&self) -> bool {
         self.is_poisoned()
@@ -322,14 +324,14 @@ unsafe impl<T, K, H> Send for BaseRwLock<T, K, H>
 where
     T: ?Sized + Send,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 unsafe impl<T, K, H> Sync for BaseRwLock<T, K, H>
 where
     T: ?Sized + Send + Sync,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -337,14 +339,14 @@ impl<T, K, H> UnwindSafe for BaseRwLock<T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 impl<T, K, H> RefUnwindSafe for BaseRwLock<T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -352,7 +354,7 @@ impl<T, K, H> Default for BaseRwLock<T, K, H>
 where
     T: Default,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn default() -> Self {
         Self::new(T::default())
@@ -362,7 +364,7 @@ where
 impl<T, K, H> From<T> for BaseRwLock<T, K, H>
 where
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn from(value: T) -> Self {
         Self::new(value)
@@ -375,7 +377,7 @@ pub struct BaseRwLockReadGuard<'a, T, K, H>
 where
     T: 'a + ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     inner: &'a BaseRwLockInner<K, H>,
     // Use a raw pointer instead of a reference to prevent aliasing violations during `drop` when
@@ -387,7 +389,7 @@ impl<'a, T, K, H> BaseRwLockReadGuard<'a, T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     unsafe fn new(lock: &'a BaseRwLock<T, K, H>) -> Self {
         Self {
@@ -402,7 +404,7 @@ impl<T, K, H> Deref for BaseRwLockReadGuard<'_, T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -414,7 +416,7 @@ impl<T, K, H> Drop for BaseRwLockReadGuard<'_, T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn drop(&mut self) {
         unsafe { self.inner.unlock(Method::Read, false) };
@@ -426,14 +428,14 @@ unsafe impl<T, K, H> Send for BaseRwLockReadGuard<'_, T, K, H>
 where
     T: ?Sized + Send,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 unsafe impl<T, K, H> Sync for BaseRwLockReadGuard<'_, T, K, H>
 where
     T: ?Sized + Sync,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -441,7 +443,7 @@ impl<'a, T, K, H> RwLockReadGuardApi<'a, T> for BaseRwLockReadGuard<'a, T, K, H>
 where
     T: 'a + ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -451,7 +453,7 @@ pub struct BaseRwLockWriteGuard<'a, T, K, H>
 where
     T: 'a + ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     inner: &'a BaseRwLockInner<K, H>,
     // Use a raw pointer instead of a reference to prevent aliasing violations during `drop` when
@@ -463,7 +465,7 @@ impl<'a, T, K, H> BaseRwLockWriteGuard<'a, T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     unsafe fn new(lock: &'a BaseRwLock<T, K, H>) -> Self {
         Self {
@@ -477,7 +479,7 @@ impl<T, K, H> Deref for BaseRwLockWriteGuard<'_, T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -489,7 +491,7 @@ impl<T, K, H> DerefMut for BaseRwLockWriteGuard<'_, T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.data }
@@ -500,10 +502,10 @@ impl<T, K, H> Drop for BaseRwLockWriteGuard<'_, T, K, H>
 where
     T: ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
     fn drop(&mut self) {
-        unsafe { self.inner.unlock(Method::Write, H::dumb().panicking()) };
+        unsafe { self.inner.unlock(Method::Write, H::panicking()) };
         self.inner.hook.after_write();
     }
 }
@@ -512,14 +514,14 @@ unsafe impl<T, K, H> Send for BaseRwLockWriteGuard<'_, T, K, H>
 where
     T: ?Sized + Send,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 unsafe impl<T, K, H> Sync for BaseRwLockWriteGuard<'_, T, K, H>
 where
     T: ?Sized + Sync,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
@@ -527,23 +529,23 @@ impl<'a, T, K, H> RwLockWriteGuardApi<'a, T> for BaseRwLockWriteGuard<'a, T, K, 
 where
     T: 'a + ?Sized,
     K: RwLockHook,
-    H: Handle,
+    H: ThreadEnv,
 {
 }
 
-pub type CoreRwLock<T> = BaseRwLock<T, (), CoreHandle>;
-pub type CoreRwLockReadGuard<'a, T> = BaseRwLockReadGuard<'a, T, (), CoreHandle>;
-pub type CoreRwLockWriteGuard<'a, T> = BaseRwLockWriteGuard<'a, T, (), CoreHandle>;
+pub type CoreRwLock<T> = BaseRwLock<T, (), CoreThreadEnv>;
+pub type CoreRwLockReadGuard<'a, T> = BaseRwLockReadGuard<'a, T, (), CoreThreadEnv>;
+pub type CoreRwLockWriteGuard<'a, T> = BaseRwLockWriteGuard<'a, T, (), CoreThreadEnv>;
 
 #[cfg(feature = "std")]
 mod std_types {
-    use crate::primitives::StdHandle;
+    use crate::primitives::StdThreadEnv;
 
     use super::{BaseRwLock, BaseRwLockReadGuard, BaseRwLockWriteGuard};
 
-    pub type StdRwLock<T> = BaseRwLock<T, (), StdHandle>;
-    pub type StdRwLockReadGuard<'a, T> = BaseRwLockReadGuard<'a, T, (), StdHandle>;
-    pub type StdRwLockWriteGuard<'a, T> = BaseRwLockWriteGuard<'a, T, (), StdHandle>;
+    pub type StdRwLock<T> = BaseRwLock<T, (), StdThreadEnv>;
+    pub type StdRwLockReadGuard<'a, T> = BaseRwLockReadGuard<'a, T, (), StdThreadEnv>;
+    pub type StdRwLockWriteGuard<'a, T> = BaseRwLockWriteGuard<'a, T, (), StdThreadEnv>;
 }
 
 #[cfg(feature = "std")]

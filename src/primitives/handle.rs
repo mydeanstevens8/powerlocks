@@ -43,20 +43,47 @@ impl Deref for HandleId {
     }
 }
 
+pub trait ThreadEnv {
+    fn yield_now()
+    where
+        Self: Sized,
+    {
+    }
+
+    fn panicking() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+}
+
 /// The core primitive for interacting with a thread environment, independent of the OS.
 ///
 /// # Safety
 /// Libraries may assume that this `Handle` is correctly implemented. In particular, the following
 /// properties must hold for each handle:
-///  - `new` must always return a `Handle` with a unique [`HandleId`] every time it is called. No
-///    two `HandleId`s can be the same using `new`.
-///  - `dumb` must always return a `Handle` with the same `HandleId` every time it is called. It
-///    cannot return different `HandleIds` on each invocation.
+///  - [`new`](Handle::new) must always return a `Handle` with a unique [`HandleId`] (retrieved from
+///    `id`) every time it is called. No two `HandleId`s can be the same using `new`.
+///  - [`dumb`](Handle::dumb) must always return a `Handle` with the same `HandleId` (from `id`)
+///    every time it is called. It cannot return different `HandleIds` on each invocation.
 ///
 /// Failing to uphold these properties may lead to incorrect synchronization in crate libraries,
 /// enabling data races and undefined behavior.
 ///
-pub unsafe trait Handle {
+/// Unsafe code however must not assume that `park` and `unpark` are correctly implemented.
+///
+/// # Other functions
+/// With [`park`](Handle::park) and [`unpark`](Handle::unpark), implementors should abide by the
+/// following properties:
+///  - `unpark` should not block the current thread, and it should release the `park` on the target
+///    thread (if any are in progress).
+///  - `park` ideally should block, but is not required to (due to implementations permitting
+///    spurious wakeups).
+///
+/// It is a logic error for `unpark` to not satisfy the above properties.
+///
+pub unsafe trait Handle: ThreadEnv {
     fn new() -> Self
     where
         Self: Sized;
@@ -71,15 +98,37 @@ pub unsafe trait Handle {
     fn id(&self) -> HandleId;
     fn park(&self);
     fn unpark(&self);
-    fn yield_now(&self);
+}
 
-    fn panicking(&self) -> bool {
+#[derive(Debug, Clone, Copy)]
+pub struct CoreThreadEnv;
+impl ThreadEnv for CoreThreadEnv {
+    fn yield_now()
+    where
+        Self: Sized,
+    {
+        core::hint::spin_loop();
+    }
+
+    fn panicking() -> bool
+    where
+        Self: Sized,
+    {
         false
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct CoreHandle(HandleId);
+
+impl ThreadEnv for CoreHandle {
+    fn yield_now()
+    where
+        Self: Sized,
+    {
+        CoreThreadEnv::yield_now();
+    }
+}
 
 unsafe impl Handle for CoreHandle {
     fn new() -> Self
@@ -105,25 +154,43 @@ unsafe impl Handle for CoreHandle {
     }
 
     fn unpark(&self) {}
-
-    fn yield_now(&self) {
-        core::hint::spin_loop();
-    }
 }
 
 #[cfg(feature = "std")]
 mod std_handle {
-    use super::{Handle, HandleId};
+    use super::{Handle, HandleId, ThreadEnv};
 
     #[cfg(feature = "std")]
     extern crate std;
 
     use std::thread::{self, Thread};
 
+    #[derive(Debug, Clone, Copy)]
+    pub struct StdThreadEnv;
+    impl ThreadEnv for StdThreadEnv {
+        fn yield_now() {
+            thread::yield_now();
+        }
+
+        fn panicking() -> bool {
+            thread::panicking()
+        }
+    }
+
     #[derive(Debug, Clone)]
     pub struct StdHandle {
         id: HandleId,
         thread: Thread,
+    }
+
+    impl ThreadEnv for StdHandle {
+        fn yield_now() {
+            StdThreadEnv::yield_now();
+        }
+
+        fn panicking() -> bool {
+            StdThreadEnv::panicking()
+        }
     }
 
     unsafe impl Handle for StdHandle {
@@ -158,16 +225,6 @@ mod std_handle {
 
         fn unpark(&self) {
             self.thread.unpark();
-        }
-
-        fn yield_now(&self) {
-            assert_eq!(thread::current().id(), self.thread.id());
-            thread::yield_now();
-        }
-
-        fn panicking(&self) -> bool {
-            assert_eq!(thread::current().id(), self.thread.id());
-            thread::panicking()
         }
     }
 }
