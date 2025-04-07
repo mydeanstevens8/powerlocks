@@ -14,13 +14,13 @@ use core::{
 
 #[derive(Debug)]
 #[must_use = "if unused the `BaseMutex` will immediately unlock"]
-pub struct BaseMutexGuard<'a, T, K, H>
+pub struct BaseMutexGuard<'a, T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
-    lock: &'a BaseMutex<T, K, H>,
+    lock: &'a BaseMutex<T, Hook, Env>,
     // It may seem as if we could get away with `&mut`, but no! While we are `drop`ping this guard,
     // `data` may still be live and some other thread could immediately lock the mutex while we are
     // dropping this guard (since we are releasing the lock during `drop`) and then create another
@@ -29,13 +29,13 @@ where
     data: *mut T,
 }
 
-impl<'a, T, K, H> BaseMutexGuard<'a, T, K, H>
+impl<'a, T, Hook, Env> BaseMutexGuard<'a, T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
-    unsafe fn new(lock: &'a BaseMutex<T, K, H>) -> Self {
+    unsafe fn new(lock: &'a BaseMutex<T, Hook, Env>) -> Self {
         Self {
             lock,
             data: lock.data.get(),
@@ -43,27 +43,27 @@ where
     }
 }
 
-impl<T, K, H> Drop for BaseMutexGuard<'_, T, K, H>
+impl<T, Hook, Env> Drop for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
     fn drop(&mut self) {
         // SAFETY: We're dropping, so we won't use `data` again.
         unsafe {
-            self.lock.unlock(H::panicking());
+            self.lock.unlock(Env::panicking());
         };
 
         self.lock.hook.after_lock();
     }
 }
 
-impl<T, K, H> Deref for BaseMutexGuard<'_, T, K, H>
+impl<T, Hook, Env> Deref for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -73,11 +73,11 @@ where
     }
 }
 
-impl<T, K, H> DerefMut for BaseMutexGuard<'_, T, K, H>
+impl<T, Hook, Env> DerefMut for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // SAFETY: `data` is aligned and is guaranteed to point to valid memory via
@@ -91,32 +91,32 @@ where
 // thread that called `pthread_mutex_lock`. Unlike `MutexGuard` though, it is safe to release our
 // `BaseMutexGuard` on another thread, as we don't depend on the `pthread` library.
 // Furthermore, we only care about if we are locked, not which thread has locked us.
-unsafe impl<T, K, H> Send for BaseMutexGuard<'_, T, K, H>
+unsafe impl<T, Hook, Env> Send for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Send,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
 }
-unsafe impl<T, K, H> Sync for BaseMutexGuard<'_, T, K, H>
+unsafe impl<T, Hook, Env> Sync for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Sync,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
 }
 
 #[derive(Debug)]
-pub struct BaseMutex<T, K, H>
+pub struct BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
     lock: AtomicBool,
     poison: AtomicBool,
-    hook: K,
-    thread_env: PhantomData<H>,
+    hook: Hook,
+    thread_env: PhantomData<Env>,
     data: UnsafeCell<T>,
 }
 
@@ -128,10 +128,10 @@ fn wrap_lock_result<T>(poisoned: bool, t: T) -> LockResult<T> {
     }
 }
 
-impl<T, H> BaseMutex<T, (), H>
+impl<T, Env> BaseMutex<T, (), Env>
 where
     T: Sized,
-    H: ThreadEnv,
+    Env: ThreadEnv,
 {
     pub const fn new_unhooked(data: T) -> Self {
         Self {
@@ -144,11 +144,11 @@ where
     }
 }
 
-impl<T, K, H> BaseMutex<T, K, H>
+impl<T, Hook, Env> BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
     pub fn new(data: T) -> Self
     where
@@ -158,7 +158,7 @@ where
         Self {
             lock: AtomicBool::new(false),
             poison: AtomicBool::new(false),
-            hook: K::new(),
+            hook: Hook::new(),
             thread_env: PhantomData,
             data: UnsafeCell::new(data),
         }
@@ -189,7 +189,7 @@ where
         self.poison.fetch_or(poison, Ordering::Release);
     }
 
-    unsafe fn do_lock(&self) -> LockResult<BaseMutexGuard<T, K, H>> {
+    unsafe fn do_lock(&self) -> LockResult<BaseMutexGuard<T, Hook, Env>> {
         // SAFETY: Caller promises that we have the exclusive lock.
         let guard = unsafe { BaseMutexGuard::new(self) };
         if self.is_poisoned() {
@@ -211,7 +211,7 @@ where
         compare_result.is_ok()
     }
 
-    pub fn lock(&self) -> LockResult<BaseMutexGuard<T, K, H>> {
+    pub fn lock(&self) -> LockResult<BaseMutexGuard<T, Hook, Env>> {
         while let ShouldBlock::Block = self.hook.try_lock() {}
 
         const STRONG_ATTEMPT_DIVIDER: usize = 32;
@@ -221,14 +221,14 @@ where
         // Otherwise, stay weak in order to conserve efficiency. Guarantee though that the first
         // acquire is strong.
         while !self.try_acquire_locker(attempts % STRONG_ATTEMPT_DIVIDER == 0) {
-            H::yield_now();
+            Env::yield_now();
             attempts = attempts.wrapping_add(1);
         }
         // SAFETY: Repeating `try_acquire_locker` until success guarantees us exclusive access.
         unsafe { self.do_lock() }
     }
 
-    pub fn try_lock(&self) -> TryLockResult<BaseMutexGuard<T, K, H>> {
+    pub fn try_lock(&self) -> TryLockResult<BaseMutexGuard<T, Hook, Env>> {
         self.hook.try_lock().to_result()?;
 
         if self.try_acquire_locker(true) {
@@ -240,22 +240,22 @@ where
     }
 }
 
-impl<T, K, H> Default for BaseMutex<T, K, H>
+impl<T, Hook, Env> Default for BaseMutex<T, Hook, Env>
 where
     T: Default,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
     fn default() -> Self {
         Self::new(T::default())
     }
 }
 
-impl<T, K, H> From<T> for BaseMutex<T, K, H>
+impl<T, Hook, Env> From<T> for BaseMutex<T, Hook, Env>
 where
     T: Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
     fn from(value: T) -> Self {
         Self::new(value)
@@ -264,49 +264,49 @@ where
 
 // `T` needs to be `Send` for `BaseMutex` to be `Send`. Otherwise, that means transferring `T`
 // itself across thread boundaries. Like `T` for example being a `MutexGuard`.
-unsafe impl<T, K, H> Send for BaseMutex<T, K, H>
+unsafe impl<T, Hook, Env> Send for BaseMutex<T, Hook, Env>
 where
     T: ?Sized + Send,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
 }
-unsafe impl<T, K, H> Sync for BaseMutex<T, K, H>
+unsafe impl<T, Hook, Env> Sync for BaseMutex<T, Hook, Env>
 where
     T: ?Sized + Send,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
 }
 
-impl<T, K, H> UnwindSafe for BaseMutex<T, K, H>
+impl<T, Hook, Env> UnwindSafe for BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
 }
-impl<T, K, H> RefUnwindSafe for BaseMutex<T, K, H>
+impl<T, Hook, Env> RefUnwindSafe for BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
 }
 
-impl<'a, T, K, H> MutexGuardApi<'a, T> for BaseMutexGuard<'a, T, K, H>
+impl<'a, T, Hook, Env> MutexGuardApi<'a, T> for BaseMutexGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
 }
 
-impl<T, K, H> MutexApi<T> for BaseMutex<T, K, H>
+impl<T, Hook, Env> MutexApi<T> for BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    K: MutexHook,
-    H: ThreadEnv,
+    Hook: MutexHook,
+    Env: ThreadEnv,
 {
     fn try_lock<'a>(&'a self) -> TryLockResult<impl MutexGuardApi<'a, T>>
     where

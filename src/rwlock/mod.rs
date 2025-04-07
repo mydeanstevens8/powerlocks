@@ -57,15 +57,15 @@ impl State {
 }
 
 #[derive(Debug)]
-struct BaseRwLockInner<K: RwLockHook, H: ThreadEnv> {
+struct BaseRwLockInner<Hook: RwLockHook, Env: ThreadEnv> {
     mutex: AtomicBool,
     state: UnsafeCell<State>,
     poison: AtomicBool,
-    hook: K,
-    thread_env: PhantomData<H>,
+    hook: Hook,
+    thread_env: PhantomData<Env>,
 }
 
-impl<H: ThreadEnv> BaseRwLockInner<(), H> {
+impl<Env: ThreadEnv> BaseRwLockInner<(), Env> {
     const fn new_unhooked() -> Self {
         Self {
             mutex: AtomicBool::new(false),
@@ -77,13 +77,13 @@ impl<H: ThreadEnv> BaseRwLockInner<(), H> {
     }
 }
 
-impl<K: RwLockHook, H: ThreadEnv> BaseRwLockInner<K, H> {
+impl<Hook: RwLockHook, Env: ThreadEnv> BaseRwLockInner<Hook, Env> {
     fn new() -> Self {
         Self {
             mutex: AtomicBool::new(false),
             state: UnsafeCell::new(State::new()),
             poison: AtomicBool::new(false),
-            hook: K::new(),
+            hook: Hook::new(),
             thread_env: PhantomData,
         }
     }
@@ -104,7 +104,7 @@ impl<K: RwLockHook, H: ThreadEnv> BaseRwLockInner<K, H> {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
             .is_err()
         {
-            H::yield_now();
+            Env::yield_now();
         }
         // SAFETY: `critical_section` enforces exclusive access via `mutex`. Box the reference in a
         // nested scope to prevent theoretical lifetime escape.
@@ -131,19 +131,19 @@ impl<K: RwLockHook, H: ThreadEnv> BaseRwLockInner<K, H> {
 }
 
 // SAFETY: `critical_section` enforces access to the `state` cell variable.
-unsafe impl<K: RwLockHook, H: ThreadEnv> Sync for BaseRwLockInner<K, H> {}
+unsafe impl<Hook: RwLockHook, Env: ThreadEnv> Sync for BaseRwLockInner<Hook, Env> {}
 
-impl<K: RwLockHook, H: ThreadEnv> UnwindSafe for BaseRwLockInner<K, H> {}
-impl<K: RwLockHook, H: ThreadEnv> RefUnwindSafe for BaseRwLockInner<K, H> {}
+impl<Hook: RwLockHook, Env: ThreadEnv> UnwindSafe for BaseRwLockInner<Hook, Env> {}
+impl<Hook: RwLockHook, Env: ThreadEnv> RefUnwindSafe for BaseRwLockInner<Hook, Env> {}
 
 #[derive(Debug)]
-pub struct BaseRwLock<T, K, H>
+pub struct BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
-    inner: BaseRwLockInner<K, H>,
+    inner: BaseRwLockInner<Hook, Env>,
     data: UnsafeCell<T>,
 }
 
@@ -178,10 +178,10 @@ fn block_try_lock<T>(mut routine: impl FnMut() -> TryLockResult<T>) -> LockResul
     }
 }
 
-impl<T, H> BaseRwLock<T, (), H>
+impl<T, Env> BaseRwLock<T, (), Env>
 where
     T: Sized,
-    H: ThreadEnv,
+    Env: ThreadEnv,
 {
     pub const fn new_unhooked(t: T) -> Self {
         Self {
@@ -191,11 +191,11 @@ where
     }
 }
 
-impl<T, K, H> BaseRwLock<T, K, H>
+impl<T, Hook, Env> BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     pub fn new(t: T) -> Self
     where
@@ -230,7 +230,7 @@ where
         self.inner.clear_poison();
     }
 
-    pub fn try_read(&self) -> TryLockResult<BaseRwLockReadGuard<'_, T, K, H>> {
+    pub fn try_read(&self) -> TryLockResult<BaseRwLockReadGuard<'_, T, Hook, Env>> {
         self.inner.hook.try_read().to_result()?;
 
         // SAFETY: The lock is acquired before guard creation by `try_lock`.
@@ -239,11 +239,11 @@ where
         })
     }
 
-    pub fn read(&self) -> LockResult<BaseRwLockReadGuard<'_, T, K, H>> {
+    pub fn read(&self) -> LockResult<BaseRwLockReadGuard<'_, T, Hook, Env>> {
         block_try_lock(|| self.try_read())
     }
 
-    pub fn try_write(&self) -> TryLockResult<BaseRwLockWriteGuard<'_, T, K, H>> {
+    pub fn try_write(&self) -> TryLockResult<BaseRwLockWriteGuard<'_, T, Hook, Env>> {
         self.inner.hook.try_write().to_result()?;
 
         // SAFETY: The lock is acquired before guard creation by `try_lock`.
@@ -252,16 +252,16 @@ where
         })
     }
 
-    pub fn write(&self) -> LockResult<BaseRwLockWriteGuard<'_, T, K, H>> {
+    pub fn write(&self) -> LockResult<BaseRwLockWriteGuard<'_, T, Hook, Env>> {
         block_try_lock(|| self.try_write())
     }
 }
 
-impl<T, K, H> RwLockApi<T> for BaseRwLock<T, K, H>
+impl<T, Hook, Env> RwLockApi<T> for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     fn is_poisoned(&self) -> bool {
         self.is_poisoned()
@@ -320,51 +320,51 @@ where
     }
 }
 
-unsafe impl<T, K, H> Send for BaseRwLock<T, K, H>
+unsafe impl<T, Hook, Env> Send for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized + Send,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
-unsafe impl<T, K, H> Sync for BaseRwLock<T, K, H>
+unsafe impl<T, Hook, Env> Sync for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized + Send + Sync,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
 
-impl<T, K, H> UnwindSafe for BaseRwLock<T, K, H>
+impl<T, Hook, Env> UnwindSafe for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
-impl<T, K, H> RefUnwindSafe for BaseRwLock<T, K, H>
+impl<T, Hook, Env> RefUnwindSafe for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
 
-impl<T, K, H> Default for BaseRwLock<T, K, H>
+impl<T, Hook, Env> Default for BaseRwLock<T, Hook, Env>
 where
     T: Default,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     fn default() -> Self {
         Self::new(T::default())
     }
 }
 
-impl<T, K, H> From<T> for BaseRwLock<T, K, H>
+impl<T, Hook, Env> From<T> for BaseRwLock<T, Hook, Env>
 where
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     fn from(value: T) -> Self {
         Self::new(value)
@@ -373,25 +373,25 @@ where
 
 #[derive(Debug)]
 #[must_use = "if unused the read-write-lock will immediately unlock"]
-pub struct BaseRwLockReadGuard<'a, T, K, H>
+pub struct BaseRwLockReadGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
-    inner: &'a BaseRwLockInner<K, H>,
+    inner: &'a BaseRwLockInner<Hook, Env>,
     // Use a raw pointer instead of a reference to prevent aliasing violations during `drop` when
     // the lock is released and then acquired by another thread before `drop` completes.
     data: NonNull<T>,
 }
 
-impl<'a, T, K, H> BaseRwLockReadGuard<'a, T, K, H>
+impl<'a, T, Hook, Env> BaseRwLockReadGuard<'a, T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
-    unsafe fn new(lock: &'a BaseRwLock<T, K, H>) -> Self {
+    unsafe fn new(lock: &'a BaseRwLock<T, Hook, Env>) -> Self {
         Self {
             inner: &lock.inner,
             // SAFETY: `UnsafeCell::get` never returns a null pointer.
@@ -400,11 +400,11 @@ where
     }
 }
 
-impl<T, K, H> Deref for BaseRwLockReadGuard<'_, T, K, H>
+impl<T, Hook, Env> Deref for BaseRwLockReadGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -412,11 +412,11 @@ where
     }
 }
 
-impl<T, K, H> Drop for BaseRwLockReadGuard<'_, T, K, H>
+impl<T, Hook, Env> Drop for BaseRwLockReadGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     fn drop(&mut self) {
         unsafe { self.inner.unlock(Method::Read, false) };
@@ -424,50 +424,50 @@ where
     }
 }
 
-unsafe impl<T, K, H> Send for BaseRwLockReadGuard<'_, T, K, H>
+unsafe impl<T, Hook, Env> Send for BaseRwLockReadGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Send,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
-unsafe impl<T, K, H> Sync for BaseRwLockReadGuard<'_, T, K, H>
+unsafe impl<T, Hook, Env> Sync for BaseRwLockReadGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Sync,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
 
-impl<'a, T, K, H> RwLockReadGuardApi<'a, T> for BaseRwLockReadGuard<'a, T, K, H>
+impl<'a, T, Hook, Env> RwLockReadGuardApi<'a, T> for BaseRwLockReadGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
 
 #[derive(Debug)]
 #[must_use = "if unused the read-write-lock will immediately unlock"]
-pub struct BaseRwLockWriteGuard<'a, T, K, H>
+pub struct BaseRwLockWriteGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
-    inner: &'a BaseRwLockInner<K, H>,
+    inner: &'a BaseRwLockInner<Hook, Env>,
     // Use a raw pointer instead of a reference to prevent aliasing violations during `drop` when
     // the lock is released and then acquired by another thread before `drop` completes.
     data: *mut T,
 }
 
-impl<'a, T, K, H> BaseRwLockWriteGuard<'a, T, K, H>
+impl<'a, T, Hook, Env> BaseRwLockWriteGuard<'a, T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
-    unsafe fn new(lock: &'a BaseRwLock<T, K, H>) -> Self {
+    unsafe fn new(lock: &'a BaseRwLock<T, Hook, Env>) -> Self {
         Self {
             inner: &lock.inner,
             data: lock.data.get(),
@@ -475,11 +475,11 @@ where
     }
 }
 
-impl<T, K, H> Deref for BaseRwLockWriteGuard<'_, T, K, H>
+impl<T, Hook, Env> Deref for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -487,49 +487,49 @@ where
     }
 }
 
-impl<T, K, H> DerefMut for BaseRwLockWriteGuard<'_, T, K, H>
+impl<T, Hook, Env> DerefMut for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.data }
     }
 }
 
-impl<T, K, H> Drop for BaseRwLockWriteGuard<'_, T, K, H>
+impl<T, Hook, Env> Drop for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
     fn drop(&mut self) {
-        unsafe { self.inner.unlock(Method::Write, H::panicking()) };
+        unsafe { self.inner.unlock(Method::Write, Env::panicking()) };
         self.inner.hook.after_write();
     }
 }
 
-unsafe impl<T, K, H> Send for BaseRwLockWriteGuard<'_, T, K, H>
+unsafe impl<T, Hook, Env> Send for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Send,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
-unsafe impl<T, K, H> Sync for BaseRwLockWriteGuard<'_, T, K, H>
+unsafe impl<T, Hook, Env> Sync for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Sync,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
 
-impl<'a, T, K, H> RwLockWriteGuardApi<'a, T> for BaseRwLockWriteGuard<'a, T, K, H>
+impl<'a, T, Hook, Env> RwLockWriteGuardApi<'a, T> for BaseRwLockWriteGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    K: RwLockHook,
-    H: ThreadEnv,
+    Hook: RwLockHook,
+    Env: ThreadEnv,
 {
 }
 
