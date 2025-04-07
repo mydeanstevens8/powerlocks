@@ -6,6 +6,9 @@
 	],
 	"settings": {
 		"editor.rulers": [80],
+		"[python]": {
+			"editor.rulers": [80]
+		},
 		"[rust]": {
 			"editor.rulers": [100]
 		},

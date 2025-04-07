@@ -1,0 +1,3 @@
+[tool.ruff]
+# For adherence to PEP8 line width
+line-length = 80
