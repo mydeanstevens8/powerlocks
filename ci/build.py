@@ -1,30 +1,27 @@
 #!/usr/bin/env python
 import typing as t
-import common
-from common import run, done
+import cibase
+from cibase import step, run
 
 
 def build_features(features: t.Iterable[str]):
-    run(f'cargo build --features "{",".join(features)}"')
+    (run(f'cargo build --features "{",".join(features)}"'),)
     run(f'cargo build --features "{",".join(features)}" --release')
 
 
 if __name__ == "__main__":
-    print("Clean", flush=True)
+    step("Clean")
     run("cargo clean")
 
-    print()
-    print("Build - No features", flush=True)
+    step("Build - No features")
     run("cargo build")
     run("cargo build --release")
 
-    print()
-    print("Build - All features", flush=True)
+    step("Build - All features")
     run("cargo build --all-features")
     run("cargo build --all-features --release")
 
-    print()
-    print("Build - Feature permutations (parallel)", flush=True)
-    common.permute_features_parallel(build_features)
-
-    done()
+    step("Build - Feature permutations (parallel)")
+    cibase.permute_features_parallel(
+        build_features, with_full=False, with_empty=False
+    )

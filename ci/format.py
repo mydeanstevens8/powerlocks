@@ -1,6 +1,7 @@
-from common import run, done
+#!/usr/bin/env python
+from cibase import step, run
+
 
 if __name__ == "__main__":
-    print("Format", flush=True)
+    step("Format")
     run("cargo fmt --all -- --check")
-    done()
