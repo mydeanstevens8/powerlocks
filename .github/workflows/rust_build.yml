@@ -19,5 +19,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build
-        shell: bash
         run: python ./ci/build.py
