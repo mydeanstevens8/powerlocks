@@ -4,12 +4,13 @@ import os
 import itertools
 import multiprocessing
 import typing as t
+import collections.abc as c
 import sys
 
 features = {"mutex", "rwlock", "std"}
 
 
-Steps = t.Callable[[], t.Iterable]
+Steps = c.Callable[[], c.Iterable]
 
 
 current_step: t.Optional[str] = None
@@ -40,12 +41,12 @@ def on_script_error(exctype, value, traceback):
 sys.excepthook = on_script_error
 
 
-def parallel_entry(target: t.Callable[..., t.Any], *args, **kwargs):
+def parallel_entry(target: c.Callable[..., t.Any], *args, **kwargs):
     target(*args, **kwargs)
 
 
 def permute_features_parallel(
-    target: t.Callable[[t.Iterable[str]], None],
+    target: c.Callable[[c.Iterable[str]], None],
     with_empty=False,
     with_full=False,
 ):
@@ -64,7 +65,7 @@ def permute_features_parallel(
 T = t.TypeVar("T")
 
 
-def parallel_params(target: t.Callable[[T], None], params: t.Iterable[T]):
+def parallel_params(target: c.Callable[[T], None], params: c.Iterable[T]):
     pool = multiprocessing.Pool()
     results = [
         pool.apply_async(parallel_entry, args=(target, param))

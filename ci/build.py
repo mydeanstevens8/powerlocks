@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-import typing as t
+import collections.abc as c
 import cibase
 from cibase import step, run
 
 
-def build_features(features: t.Iterable[str]):
+def build_features(features: c.Iterable[str]):
     (run(f'cargo build --features "{",".join(features)}"'),)
     run(f'cargo build --features "{",".join(features)}" --release')
 

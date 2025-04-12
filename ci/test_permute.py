@@ -1,14 +1,14 @@
 #!/usr/bin/env python
-import typing as t
+import collections.abc as c
 import cibase
 from cibase import step, run
 
 
-def build_test_features(features: t.Iterable[str]):
+def build_test_features(features: c.Iterable[str]):
     run(f'cargo test --features "{",".join(features)}" --no-run')
 
 
-def test_test_features(features: t.Iterable[str]):
+def test_test_features(features: c.Iterable[str]):
     run(f'cargo test --features "{",".join(features)}" --no-fail-fast')
 
 
