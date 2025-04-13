@@ -1,3 +1,5 @@
+#![cfg(feature = "mutex")]
+
 mod api;
 pub use api::*;
 

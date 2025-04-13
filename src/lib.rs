@@ -1,12 +1,8 @@
 #![no_std]
 
-pub mod primitives;
-
-#[cfg(feature = "mutex")]
 pub mod mutex;
+pub mod primitives;
+pub mod rwlock;
 
 #[cfg(feature = "rwlock")]
 pub mod strategied_rwlock;
-
-#[cfg(feature = "rwlock")]
-pub mod rwlock;

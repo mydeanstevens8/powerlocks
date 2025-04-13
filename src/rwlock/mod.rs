@@ -1,3 +1,5 @@
+#![cfg(feature = "rwlock")]
+
 mod api;
 pub use api::*;
 
