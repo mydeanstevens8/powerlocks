@@ -228,30 +228,38 @@ where
         self.inner.clear_poison();
     }
 
-    pub fn try_read(&self) -> TryLockResult<BaseRwLockReadGuard<'_, T, Hook, Env>> {
-        self.inner.hook.try_read().to_result()?;
-
+    fn try_read_inner(&self) -> TryLockResult<BaseRwLockReadGuard<'_, T, Hook, Env>> {
         // SAFETY: The lock is acquired before guard creation by `try_lock`.
         map_ok_and_poisoned(self.inner.try_lock(Method::Read), |_| unsafe {
             BaseRwLockReadGuard::new(self)
         })
     }
 
-    pub fn read(&self) -> LockResult<BaseRwLockReadGuard<'_, T, Hook, Env>> {
-        block_try_lock(|| self.try_read())
+    pub fn try_read(&self) -> TryLockResult<BaseRwLockReadGuard<'_, T, Hook, Env>> {
+        self.inner.hook.try_read().to_result()?;
+        self.try_read_inner()
     }
 
-    pub fn try_write(&self) -> TryLockResult<BaseRwLockWriteGuard<'_, T, Hook, Env>> {
-        self.inner.hook.try_write().to_result()?;
+    pub fn read(&self) -> LockResult<BaseRwLockReadGuard<'_, T, Hook, Env>> {
+        self.inner.hook.read();
+        block_try_lock(|| self.try_read_inner())
+    }
 
+    fn try_write_inner(&self) -> TryLockResult<BaseRwLockWriteGuard<'_, T, Hook, Env>> {
         // SAFETY: The lock is acquired before guard creation by `try_lock`.
         map_ok_and_poisoned(self.inner.try_lock(Method::Write), |_| unsafe {
             BaseRwLockWriteGuard::new(self)
         })
     }
 
+    pub fn try_write(&self) -> TryLockResult<BaseRwLockWriteGuard<'_, T, Hook, Env>> {
+        self.inner.hook.try_write().to_result()?;
+        self.try_write_inner()
+    }
+
     pub fn write(&self) -> LockResult<BaseRwLockWriteGuard<'_, T, Hook, Env>> {
-        block_try_lock(|| self.try_write())
+        self.inner.hook.write();
+        block_try_lock(|| self.try_write_inner())
     }
 }
 

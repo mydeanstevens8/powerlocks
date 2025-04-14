@@ -7,6 +7,12 @@ pub trait MutexHook {
         ShouldBlock::Ok
     }
 
+    fn lock(&self) {
+        while let ShouldBlock::Block = self.try_lock() {
+            core::hint::spin_loop();
+        }
+    }
+
     fn after_lock(&self) {}
 
     fn new() -> Self

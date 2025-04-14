@@ -15,6 +15,18 @@ pub trait RwLockHook {
         ShouldBlock::Ok
     }
 
+    fn read(&self) {
+        while let ShouldBlock::Block = self.try_read() {
+            core::hint::spin_loop();
+        }
+    }
+
+    fn write(&self) {
+        while let ShouldBlock::Block = self.try_write() {
+            core::hint::spin_loop();
+        }
+    }
+
     fn after_read(&self) {}
     fn after_write(&self) {}
 }

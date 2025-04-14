@@ -1,6 +1,6 @@
 use super::api::{MutexApi, MutexGuardApi, MutexHook};
 use crate::primitives::{
-    CoreThreadEnv, LockResult, PoisonError, ShouldBlock, ThreadEnv, TryLockError, TryLockResult,
+    CoreThreadEnv, LockResult, PoisonError, ThreadEnv, TryLockError, TryLockResult,
 };
 use core::{
     cell::UnsafeCell,
@@ -210,7 +210,7 @@ where
     }
 
     pub fn lock(&self) -> LockResult<BaseMutexGuard<T, Hook, Env>> {
-        while let ShouldBlock::Block = self.hook.try_lock() {}
+        self.hook.lock();
 
         const STRONG_ATTEMPT_DIVIDER: usize = 32;
         let mut attempts = 0_usize;
