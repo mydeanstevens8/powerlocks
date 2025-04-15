@@ -55,7 +55,7 @@ impl State {
 }
 
 #[derive(Debug)]
-struct BaseRwLockInner<Hook: RwLockHook, Env: ThreadEnv> {
+struct BaseRwLockInner<Hook: RwLockHook<Env>, Env: ThreadEnv> {
     mutex: AtomicBool,
     state: UnsafeCell<State>,
     poison: AtomicBool,
@@ -63,7 +63,7 @@ struct BaseRwLockInner<Hook: RwLockHook, Env: ThreadEnv> {
     thread_env: PhantomData<Env>,
 }
 
-impl<Env: ThreadEnv> BaseRwLockInner<(), Env> {
+impl BaseRwLockInner<(), CoreThreadEnv> {
     const fn new_unhooked() -> Self {
         Self {
             mutex: AtomicBool::new(false),
@@ -75,7 +75,20 @@ impl<Env: ThreadEnv> BaseRwLockInner<(), Env> {
     }
 }
 
-impl<Hook: RwLockHook, Env: ThreadEnv> BaseRwLockInner<Hook, Env> {
+#[cfg(feature = "std")]
+impl BaseRwLockInner<(), crate::primitives::StdThreadEnv> {
+    const fn new_unhooked() -> Self {
+        Self {
+            mutex: AtomicBool::new(false),
+            state: UnsafeCell::new(State::new()),
+            poison: AtomicBool::new(false),
+            hook: (),
+            thread_env: PhantomData,
+        }
+    }
+}
+
+impl<Hook: RwLockHook<Env>, Env: ThreadEnv> BaseRwLockInner<Hook, Env> {
     fn new() -> Self {
         Self {
             mutex: AtomicBool::new(false),
@@ -129,16 +142,16 @@ impl<Hook: RwLockHook, Env: ThreadEnv> BaseRwLockInner<Hook, Env> {
 }
 
 // SAFETY: `critical_section` enforces access to the `state` cell variable.
-unsafe impl<Hook: RwLockHook, Env: ThreadEnv> Sync for BaseRwLockInner<Hook, Env> {}
+unsafe impl<Hook: RwLockHook<Env>, Env: ThreadEnv> Sync for BaseRwLockInner<Hook, Env> {}
 
-impl<Hook: RwLockHook, Env: ThreadEnv> UnwindSafe for BaseRwLockInner<Hook, Env> {}
-impl<Hook: RwLockHook, Env: ThreadEnv> RefUnwindSafe for BaseRwLockInner<Hook, Env> {}
+impl<Hook: RwLockHook<Env>, Env: ThreadEnv> UnwindSafe for BaseRwLockInner<Hook, Env> {}
+impl<Hook: RwLockHook<Env>, Env: ThreadEnv> RefUnwindSafe for BaseRwLockInner<Hook, Env> {}
 
 #[derive(Debug)]
 pub struct BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     inner: BaseRwLockInner<Hook, Env>,
@@ -176,14 +189,20 @@ fn block_try_lock<T>(mut routine: impl FnMut() -> TryLockResult<T>) -> LockResul
     }
 }
 
-impl<T, Env> BaseRwLock<T, (), Env>
-where
-    T: Sized,
-    Env: ThreadEnv,
-{
+impl<T> BaseRwLock<T, (), CoreThreadEnv> {
     pub const fn new_unhooked(t: T) -> Self {
         Self {
-            inner: BaseRwLockInner::new_unhooked(),
+            inner: BaseRwLockInner::<(), CoreThreadEnv>::new_unhooked(),
+            data: UnsafeCell::new(t),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T> BaseRwLock<T, (), crate::primitives::StdThreadEnv> {
+    pub const fn new_unhooked(t: T) -> Self {
+        Self {
+            inner: BaseRwLockInner::<(), crate::primitives::StdThreadEnv>::new_unhooked(),
             data: UnsafeCell::new(t),
         }
     }
@@ -192,7 +211,7 @@ where
 impl<T, Hook, Env> BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     pub fn new(t: T) -> Self
@@ -266,7 +285,7 @@ where
 impl<T, Hook, Env> RwLockApi<T> for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     fn is_poisoned(&self) -> bool {
@@ -329,14 +348,14 @@ where
 unsafe impl<T, Hook, Env> Send for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized + Send,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
 unsafe impl<T, Hook, Env> Sync for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized + Send + Sync,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -344,14 +363,14 @@ where
 impl<T, Hook, Env> UnwindSafe for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
 impl<T, Hook, Env> RefUnwindSafe for BaseRwLock<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -359,7 +378,7 @@ where
 impl<T, Hook, Env> Default for BaseRwLock<T, Hook, Env>
 where
     T: Default,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     fn default() -> Self {
@@ -369,7 +388,7 @@ where
 
 impl<T, Hook, Env> From<T> for BaseRwLock<T, Hook, Env>
 where
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     fn from(value: T) -> Self {
@@ -382,7 +401,7 @@ where
 pub struct BaseRwLockReadGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     inner: &'a BaseRwLockInner<Hook, Env>,
@@ -394,7 +413,7 @@ where
 impl<'a, T, Hook, Env> BaseRwLockReadGuard<'a, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     unsafe fn new(lock: &'a BaseRwLock<T, Hook, Env>) -> Self {
@@ -409,7 +428,7 @@ where
 impl<T, Hook, Env> Deref for BaseRwLockReadGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     type Target = T;
@@ -421,7 +440,7 @@ where
 impl<T, Hook, Env> Drop for BaseRwLockReadGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     fn drop(&mut self) {
@@ -433,14 +452,14 @@ where
 unsafe impl<T, Hook, Env> Send for BaseRwLockReadGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Send,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
 unsafe impl<T, Hook, Env> Sync for BaseRwLockReadGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Sync,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -448,7 +467,7 @@ where
 impl<'a, T, Hook, Env> RwLockReadGuardApi<'a, T> for BaseRwLockReadGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -458,7 +477,7 @@ where
 pub struct BaseRwLockWriteGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     inner: &'a BaseRwLockInner<Hook, Env>,
@@ -470,7 +489,7 @@ where
 impl<'a, T, Hook, Env> BaseRwLockWriteGuard<'a, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     unsafe fn new(lock: &'a BaseRwLock<T, Hook, Env>) -> Self {
@@ -484,7 +503,7 @@ where
 impl<T, Hook, Env> Deref for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     type Target = T;
@@ -496,7 +515,7 @@ where
 impl<T, Hook, Env> DerefMut for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -507,7 +526,7 @@ where
 impl<T, Hook, Env> Drop for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
     fn drop(&mut self) {
@@ -519,14 +538,14 @@ where
 unsafe impl<T, Hook, Env> Send for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Send,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
 unsafe impl<T, Hook, Env> Sync for BaseRwLockWriteGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Sync,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -534,7 +553,7 @@ where
 impl<'a, T, Hook, Env> RwLockWriteGuardApi<'a, T> for BaseRwLockWriteGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    Hook: RwLockHook,
+    Hook: RwLockHook<Env>,
     Env: ThreadEnv,
 {
 }

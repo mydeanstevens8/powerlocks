@@ -15,7 +15,7 @@ use core::{
 pub struct BaseMutexGuard<'a, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     lock: &'a BaseMutex<T, Hook, Env>,
@@ -30,7 +30,7 @@ where
 impl<'a, T, Hook, Env> BaseMutexGuard<'a, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     unsafe fn new(lock: &'a BaseMutex<T, Hook, Env>) -> Self {
@@ -44,7 +44,7 @@ where
 impl<T, Hook, Env> Drop for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     fn drop(&mut self) {
@@ -60,7 +60,7 @@ where
 impl<T, Hook, Env> Deref for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     type Target = T;
@@ -74,7 +74,7 @@ where
 impl<T, Hook, Env> DerefMut for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -92,14 +92,14 @@ where
 unsafe impl<T, Hook, Env> Send for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Send,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
 }
 unsafe impl<T, Hook, Env> Sync for BaseMutexGuard<'_, T, Hook, Env>
 where
     T: ?Sized + Sync,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -108,7 +108,7 @@ where
 pub struct BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     lock: AtomicBool,
@@ -126,11 +126,20 @@ fn wrap_lock_result<T>(poisoned: bool, t: T) -> LockResult<T> {
     }
 }
 
-impl<T, Env> BaseMutex<T, (), Env>
-where
-    T: Sized,
-    Env: ThreadEnv,
-{
+impl<T> BaseMutex<T, (), CoreThreadEnv> {
+    pub const fn new_unhooked(data: T) -> Self {
+        Self {
+            lock: AtomicBool::new(false),
+            poison: AtomicBool::new(false),
+            hook: (),
+            thread_env: PhantomData,
+            data: UnsafeCell::new(data),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T> BaseMutex<T, (), crate::primitives::StdThreadEnv> {
     pub const fn new_unhooked(data: T) -> Self {
         Self {
             lock: AtomicBool::new(false),
@@ -145,7 +154,7 @@ where
 impl<T, Hook, Env> BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     pub fn new(data: T) -> Self
@@ -241,7 +250,7 @@ where
 impl<T, Hook, Env> Default for BaseMutex<T, Hook, Env>
 where
     T: Default,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     fn default() -> Self {
@@ -252,7 +261,7 @@ where
 impl<T, Hook, Env> From<T> for BaseMutex<T, Hook, Env>
 where
     T: Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     fn from(value: T) -> Self {
@@ -265,14 +274,14 @@ where
 unsafe impl<T, Hook, Env> Send for BaseMutex<T, Hook, Env>
 where
     T: ?Sized + Send,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
 }
 unsafe impl<T, Hook, Env> Sync for BaseMutex<T, Hook, Env>
 where
     T: ?Sized + Send,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -280,14 +289,14 @@ where
 impl<T, Hook, Env> UnwindSafe for BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
 }
 impl<T, Hook, Env> RefUnwindSafe for BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -295,7 +304,7 @@ where
 impl<'a, T, Hook, Env> MutexGuardApi<'a, T> for BaseMutexGuard<'a, T, Hook, Env>
 where
     T: 'a + ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
 }
@@ -303,7 +312,7 @@ where
 impl<T, Hook, Env> MutexApi<T> for BaseMutex<T, Hook, Env>
 where
     T: ?Sized,
-    Hook: MutexHook,
+    Hook: MutexHook<Env>,
     Env: ThreadEnv,
 {
     fn try_lock<'a>(&'a self) -> TryLockResult<impl MutexGuardApi<'a, T>>

@@ -1,15 +1,17 @@
 use core::ops::{Deref, DerefMut};
 
-use crate::primitives::{LockResult, ShouldBlock, TryLockError, TryLockResult};
+use crate::primitives::{
+    CoreThreadEnv, LockResult, ShouldBlock, ThreadEnv, TryLockError, TryLockResult,
+};
 
-pub trait MutexHook {
+pub trait MutexHook<Env: ThreadEnv> {
     fn try_lock(&self) -> ShouldBlock {
         ShouldBlock::Ok
     }
 
     fn lock(&self) {
         while let ShouldBlock::Block = self.try_lock() {
-            core::hint::spin_loop();
+            Env::yield_now();
         }
     }
 
@@ -20,7 +22,16 @@ pub trait MutexHook {
         Self: Sized;
 }
 
-impl MutexHook for () {
+impl MutexHook<CoreThreadEnv> for () {
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+    }
+}
+
+#[cfg(feature = "std")]
+impl MutexHook<crate::primitives::StdThreadEnv> for () {
     fn new() -> Self
     where
         Self: Sized,

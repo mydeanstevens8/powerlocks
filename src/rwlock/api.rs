@@ -1,8 +1,10 @@
 use core::ops::{Deref, DerefMut};
 
-use crate::primitives::{LockResult, ShouldBlock, TryLockError, TryLockResult};
+use crate::primitives::{
+    CoreThreadEnv, LockResult, ShouldBlock, ThreadEnv, TryLockError, TryLockResult,
+};
 
-pub trait RwLockHook {
+pub trait RwLockHook<Env: ThreadEnv> {
     fn new() -> Self
     where
         Self: Sized;
@@ -17,13 +19,13 @@ pub trait RwLockHook {
 
     fn read(&self) {
         while let ShouldBlock::Block = self.try_read() {
-            core::hint::spin_loop();
+            Env::yield_now();
         }
     }
 
     fn write(&self) {
         while let ShouldBlock::Block = self.try_write() {
-            core::hint::spin_loop();
+            Env::yield_now();
         }
     }
 
@@ -32,7 +34,16 @@ pub trait RwLockHook {
 }
 
 // `()` means a basic hook that does nothing.
-impl RwLockHook for () {
+impl RwLockHook<CoreThreadEnv> for () {
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+    }
+}
+
+#[cfg(feature = "std")]
+impl RwLockHook<crate::primitives::StdThreadEnv> for () {
     fn new() -> Self
     where
         Self: Sized,
