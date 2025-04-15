@@ -1,3 +1,4 @@
+use crate::primitives::{CoreThreadEnv, ThreadEnv};
 use core::ops::Deref;
 
 #[cfg(not(feature = "mutex"))]
@@ -43,21 +44,6 @@ impl Deref for HandleId {
     }
 }
 
-pub trait ThreadEnv {
-    fn yield_now()
-    where
-        Self: Sized,
-    {
-    }
-
-    fn panicking() -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-}
-
 /// The core primitive for interacting with a thread environment, independent of the OS.
 ///
 /// # Safety
@@ -100,24 +86,6 @@ pub unsafe trait Handle: ThreadEnv {
     fn unpark(&self);
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CoreThreadEnv;
-impl ThreadEnv for CoreThreadEnv {
-    fn yield_now()
-    where
-        Self: Sized,
-    {
-        core::hint::spin_loop();
-    }
-
-    fn panicking() -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct CoreHandle(HandleId);
 
@@ -158,24 +126,12 @@ unsafe impl Handle for CoreHandle {
 
 #[cfg(feature = "std")]
 mod std_handle {
-    use super::{Handle, HandleId, ThreadEnv};
+    use super::{Handle, HandleId};
+    use crate::primitives::{StdThreadEnv, ThreadEnv};
 
-    #[cfg(feature = "std")]
     extern crate std;
 
     use std::thread::{self, Thread};
-
-    #[derive(Debug, Clone, Copy)]
-    pub struct StdThreadEnv;
-    impl ThreadEnv for StdThreadEnv {
-        fn yield_now() {
-            thread::yield_now();
-        }
-
-        fn panicking() -> bool {
-            thread::panicking()
-        }
-    }
 
     #[derive(Debug, Clone)]
     pub struct StdHandle {
