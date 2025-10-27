@@ -130,10 +130,7 @@ where
 
     thread::scope(|scope| {
         attempts
-            .split(|attempt| match attempt {
-                TryStrategyAttempt::UnlockAll => true,
-                _ => false,
-            })
+            .split(|attempt| matches!(attempt, TryStrategyAttempt::UnlockAll))
             .for_each(|attempt_set| try_strategy_inner(lock, scope, 0, attempt_set));
     });
 }

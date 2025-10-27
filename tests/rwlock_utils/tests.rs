@@ -128,11 +128,11 @@ pub fn no_poison_on_read<A: RwLockApi<()> + Sync>(lock: &A) {
             "Panicking during a `read` must not poison the `lock`."
         );
 
-        assert_eq!(*lock.read().unwrap(), ());
-        assert_eq!(*lock.write().unwrap(), ());
+        *lock.read().unwrap();
+        *lock.write().unwrap();
 
-        assert_eq!(*lock.try_read().unwrap(), ());
-        assert_eq!(*lock.try_write().unwrap(), ());
+        *lock.try_read().unwrap();
+        *lock.try_write().unwrap();
     });
 }
 
@@ -156,16 +156,16 @@ pub fn poison_on_write<A: RwLockApi<()> + Sync>(lock: &A) {
             "Panicking during a `write` must poison the `lock`."
         );
 
-        assert_eq!(*lock.read().err().unwrap().into_inner(), ());
-        assert_eq!(*lock.write().err().unwrap().into_inner(), ());
+        *lock.read().err().unwrap().into_inner();
+        *lock.write().err().unwrap().into_inner();
         if let Err(TryLockError::Poisoned(poison)) = lock.try_read() {
-            assert_eq!(*poison.into_inner(), ());
+            *poison.into_inner();
         } else {
             panic!("`lock` must be poisoned");
         }
 
         if let Err(TryLockError::Poisoned(poison)) = lock.try_write() {
-            assert_eq!(*poison.into_inner(), ());
+            *poison.into_inner();
         } else {
             panic!("`lock` must be poisoned");
         }
@@ -173,11 +173,11 @@ pub fn poison_on_write<A: RwLockApi<()> + Sync>(lock: &A) {
         lock.clear_poison();
         assert!(!lock.is_poisoned());
 
-        assert_eq!(*lock.read().unwrap(), ());
-        assert_eq!(*lock.write().unwrap(), ());
+        *lock.read().unwrap();
+        *lock.write().unwrap();
 
-        assert_eq!(*lock.try_read().unwrap(), ());
-        assert_eq!(*lock.try_write().unwrap(), ());
+        *lock.try_read().unwrap();
+        *lock.try_write().unwrap();
     })
 }
 
@@ -457,7 +457,7 @@ pub fn load_test_with<A: RwLockApi<usize> + Sync>(
                         actions.append(&mut vec![TestActions::Write; writes / 2]);
                         actions.append(&mut vec![TestActions::Read; reads / 2]);
 
-                        rng.shuffle(&mut *actions);
+                        rng.shuffle(&mut actions);
 
                         for action in actions {
                             match action {

@@ -124,7 +124,8 @@ impl RaceChecker {
             Err(TryLockError::WouldBlock) => Err(()),
         }?;
         handle.acquire();
-        Ok(drop(guard))
+        drop(guard);
+        Ok(())
     }
 
     // Used by `rwlock` tests, but not by `mutex` tests.
@@ -140,7 +141,8 @@ impl RaceChecker {
             Err(TryLockError::WouldBlock) => Err(()),
         }?;
         handle.acquire();
-        Ok(drop(guard))
+        drop(guard);
+        Ok(())
     }
 
     pub fn write(&self, handle: &CheckerHandle) {

@@ -303,13 +303,13 @@ impl<T: Sized, H: Handle> BaseRwLock<T, H> {
 }
 
 impl<T: ?Sized, H: Handle> BaseRwLock<T, H> {
-    pub fn read(&self) -> LockResult<BaseRwLockReadGuard<T, H>> {
+    pub fn read(&self) -> LockResult<BaseRwLockReadGuard<'_, T, H>> {
         let handle = self.inner.queue().acquire(Method::Read);
         // SAFETY: `acquire` ensures that no write operations are happening.
         unsafe { self.inner.do_read(handle, &self.data) }
     }
 
-    pub fn try_read(&self) -> TryLockResult<BaseRwLockReadGuard<T, H>> {
+    pub fn try_read(&self) -> TryLockResult<BaseRwLockReadGuard<'_, T, H>> {
         if let Ok(handle) = self.inner.queue().try_acquire(Method::Read) {
             // SAFETY: `try_acquire` returning `Ok` ensures that no write operations are happening.
             unsafe { self.inner.do_read(handle, &self.data) }.map_err(TryLockError::Poisoned)
@@ -318,13 +318,13 @@ impl<T: ?Sized, H: Handle> BaseRwLock<T, H> {
         }
     }
 
-    pub fn write(&self) -> LockResult<BaseRwLockWriteGuard<T, H>> {
+    pub fn write(&self) -> LockResult<BaseRwLockWriteGuard<'_, T, H>> {
         let handle = self.inner.queue().acquire(Method::Write);
         // SAFETY: `acquire` ensures that this thread has exclusive access.
         unsafe { self.inner.do_write(handle, &self.data) }
     }
 
-    pub fn try_write(&self) -> TryLockResult<BaseRwLockWriteGuard<T, H>> {
+    pub fn try_write(&self) -> TryLockResult<BaseRwLockWriteGuard<'_, T, H>> {
         if let Ok(handle) = self.inner.queue().try_acquire(Method::Write) {
             // SAFETY: `try_acquire` returning `Ok` ensures that this thread has exclusive access.
             unsafe { self.inner.do_write(handle, &self.data) }.map_err(TryLockError::Poisoned)

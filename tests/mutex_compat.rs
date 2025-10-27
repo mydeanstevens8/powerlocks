@@ -83,7 +83,7 @@ fn try_lock() {
 
 #[test]
 fn load_test() {
-    const THREADS: usize = if cfg!(miri) { 8 } else { 8 };
+    const THREADS: usize = 8;
     const REPS: usize = if cfg!(miri) { 32 } else { 16384 };
     const CYCLES: usize = if cfg!(miri) { 8 } else { 64 };
 
@@ -92,7 +92,7 @@ fn load_test() {
 
 #[test]
 fn poisoning_load_test() {
-    const THREADS: usize = if cfg!(miri) { 8 } else { 8 };
+    const THREADS: usize = 8;
     const REPS: usize = if cfg!(miri) { 16 } else { 16384 };
     const CYCLES: usize = if cfg!(miri) { 8 } else { 64 };
     const POISONING_REPS: usize = if cfg!(miri) { 4 } else { 64 };
@@ -104,7 +104,7 @@ fn poisoning_load_test() {
 #[test]
 #[ignore = "This is a benchmark test that takes a long time to run."]
 fn extended_load_test() {
-    const THREADS: usize = if cfg!(miri) { 8 } else { 8 };
+    const THREADS: usize = 8;
     const REPS: usize = if cfg!(miri) { 32 } else { 262144 };
     const CYCLES: usize = if cfg!(miri) { 16 } else { 128 };
 

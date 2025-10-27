@@ -183,7 +183,9 @@ pub fn try_lock<A: MutexApi<T> + Sync, T: Testable>(value: &T) {
             drop(guard);
         });
 
-        while !lock_active.load(Ordering::Relaxed) {}
+        while !lock_active.load(Ordering::Relaxed) {
+            std::hint::spin_loop()
+        }
 
         match lock.try_lock() {
             Ok(_) => panic!("Expected `Err(TryLockError::WouldBlock)`, got `Ok`."),
@@ -228,7 +230,7 @@ pub fn do_load_test<A: MutexApi<u64> + Sync>(
                                 .spawn(|| {
                                     let guard =
                                         lock_ref.lock().unwrap_or_else(PoisonError::into_inner);
-                                    black_box(|value| (panic!("Poisoning: {}", value)))(*guard);
+                                    black_box(|value| panic!("Poisoning: {}", value))(*guard);
                                     drop(guard);
                                 })
                                 .join()
@@ -246,7 +248,7 @@ pub fn do_load_test<A: MutexApi<u64> + Sync>(
                         };
 
                         normal();
-                        poisoning_reps.map(|poisoning_reps| {
+                        if let Some(poisoning_reps) = poisoning_reps {
                             match (rep + thread) % (poisoning_reps) {
                                 0 => {
                                     poison();
@@ -256,7 +258,7 @@ pub fn do_load_test<A: MutexApi<u64> + Sync>(
                                 }
                                 _ => (),
                             }
-                        });
+                        }
                     }
                 };
 

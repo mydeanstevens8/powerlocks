@@ -196,7 +196,7 @@ where
         self.poison.fetch_or(poison, Ordering::Release);
     }
 
-    unsafe fn do_lock(&self) -> LockResult<BaseMutexGuard<T, Hook, Env>> {
+    unsafe fn do_lock(&self) -> LockResult<BaseMutexGuard<'_, T, Hook, Env>> {
         // SAFETY: Caller promises that we have the exclusive lock.
         let guard = unsafe { BaseMutexGuard::new(self) };
         if self.is_poisoned() {
@@ -218,7 +218,7 @@ where
         compare_result.is_ok()
     }
 
-    pub fn lock(&self) -> LockResult<BaseMutexGuard<T, Hook, Env>> {
+    pub fn lock(&self) -> LockResult<BaseMutexGuard<'_, T, Hook, Env>> {
         self.hook.lock();
 
         const STRONG_ATTEMPT_DIVIDER: usize = 32;
@@ -227,7 +227,7 @@ where
         // Try a strong acquire once in a while to prevent being stuck on spurious failures.
         // Otherwise, stay weak in order to conserve efficiency. Guarantee though that the first
         // acquire is strong.
-        while !self.try_acquire_locker(attempts % STRONG_ATTEMPT_DIVIDER == 0) {
+        while !self.try_acquire_locker(attempts.is_multiple_of(STRONG_ATTEMPT_DIVIDER)) {
             Env::yield_now();
             attempts = attempts.wrapping_add(1);
         }
@@ -235,7 +235,7 @@ where
         unsafe { self.do_lock() }
     }
 
-    pub fn try_lock(&self) -> TryLockResult<BaseMutexGuard<T, Hook, Env>> {
+    pub fn try_lock(&self) -> TryLockResult<BaseMutexGuard<'_, T, Hook, Env>> {
         self.hook.try_lock().to_result()?;
 
         if self.try_acquire_locker(true) {
